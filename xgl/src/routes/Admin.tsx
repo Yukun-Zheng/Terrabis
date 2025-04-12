@@ -1,13 +1,21 @@
+// 从React库导入React对象和相关钩子
 import React, { useEffect, useState } from 'react';
+// 导入路由相关的钩子
 import { useNavigate } from 'react-router-dom';
+// 导入用户信息组件
 import UserInfo from '../components/UserInfo';
+// 导入类型定义
 import { User, UserRole } from '../types';
+// 导入认证相关函数
 import { getCurrentUser, logout, getAllUsers } from '../utils/auth';
 
+// 管理员页面组件
 const Admin: React.FC = () => {
   const navigate = useNavigate();
-  const [users, setUsers] = useState<User[]>([]);
-  const [activeTab, setActiveTab] = useState<'users' | 'stats'>('users');
+  // 使用state钩子管理状态
+  const [users, setUsers] = useState<User[]>([]);  // 用户列表
+  const [activeTab, setActiveTab] = useState<'users' | 'stats'>('users');  // 当前活动标签
+  // 获取当前登录用户信息
   const user = getCurrentUser();
 
   // 加载用户数据的函数
@@ -15,8 +23,9 @@ const Admin: React.FC = () => {
     setUsers(getAllUsers());
   };
 
+  // 初始化：验证权限并加载数据
   useEffect(() => {
-    // 检查用户权限
+    // 检查用户权限，只允许管理员访问
     if (!user || user.role !== UserRole.ADMIN) {
       navigate('/login');
       return;
@@ -26,6 +35,7 @@ const Admin: React.FC = () => {
     loadUsers();
   }, [navigate, user]);
 
+  // 处理登出逻辑
   const handleLogout = () => {
     logout();
     navigate('/login');
@@ -33,7 +43,7 @@ const Admin: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {/* 顶部导航 */}
+      {/* 顶部导航栏 */}
       <nav className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -41,6 +51,7 @@ const Admin: React.FC = () => {
               <div className="flex-shrink-0 flex items-center">
                 <h1 className="text-xl font-bold">管理员控制面板</h1>
               </div>
+              {/* 导航标签按钮 */}
               <div className="ml-6 flex space-x-8">
                 <button
                   onClick={() => setActiveTab('users')}
@@ -64,6 +75,7 @@ const Admin: React.FC = () => {
                 </button>
               </div>
             </div>
+            {/* 用户信息和登出按钮 */}
             <div className="flex items-center">
               <span className="text-gray-700 mr-4">
                 {user?.username} (管理员)
@@ -79,10 +91,12 @@ const Admin: React.FC = () => {
         </div>
       </nav>
 
-      {/* 主要内容 */}
+      {/* 主要内容区域 */}
       <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="px-4 py-6 sm:px-0">
+          {/* 根据当前活动标签显示不同内容 */}
           {activeTab === 'users' ? (
+            // 用户管理标签内容
             <div>
               <div className="mb-6 flex justify-between items-center">
                 <h2 className="text-xl font-semibold text-gray-800">用户列表</h2>
@@ -93,12 +107,16 @@ const Admin: React.FC = () => {
                   添加用户
                 </button>
               </div>
+              {/* 用户列表表格 */}
               <UserInfo users={users} />
             </div>
           ) : (
+            // 统计信息标签内容
             <div>
               <h2 className="text-xl font-semibold text-gray-800 mb-6">统计信息</h2>
+              {/* 数据统计卡片网格 */}
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+                {/* 总用户数统计卡片 */}
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="px-4 py-5 sm:p-6">
                     <div className="flex items-center">
@@ -135,6 +153,7 @@ const Admin: React.FC = () => {
                   </div>
                 </div>
 
+                {/* 今日活跃用户统计卡片 */}
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="px-4 py-5 sm:p-6">
                     <div className="flex items-center">
@@ -160,6 +179,7 @@ const Admin: React.FC = () => {
                         </dt>
                         <dd className="flex items-baseline">
                           <div className="text-2xl font-semibold text-gray-900">
+                            {/* 计算今日登录的用户数量 */}
                             {users.filter(u => {
                               const lastLogin = new Date(u.lastLogin);
                               const today = new Date();
@@ -174,6 +194,7 @@ const Admin: React.FC = () => {
                   </div>
                 </div>
 
+                {/* 本月新增用户统计卡片 */}
                 <div className="bg-white overflow-hidden shadow rounded-lg">
                   <div className="px-4 py-5 sm:p-6">
                     <div className="flex items-center">
@@ -202,6 +223,7 @@ const Admin: React.FC = () => {
                         </dt>
                         <dd className="flex items-baseline">
                           <div className="text-2xl font-semibold text-gray-900">
+                            {/* 计算本月注册的用户数量 */}
                             {users.filter(u => {
                               const creationDate = new Date(u.createdAt);
                               const today = new Date();

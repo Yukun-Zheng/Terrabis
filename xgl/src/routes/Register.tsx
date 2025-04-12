@@ -1,23 +1,30 @@
+// 从React库导入React对象和useState钩子
 import React, { useState } from 'react';
+// 导入路由相关的钩子和组件
 import { useNavigate, Link } from 'react-router-dom';
+// 导入注册认证函数
 import { register } from '../utils/auth';
 
+// 注册页面组件
 const Register: React.FC = () => {
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminKey, setAdminKey] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // 使用state钩子管理表单字段和状态
+  const [username, setUsername] = useState('');   // 用户名
+  const [password, setPassword] = useState('');   // 密码
+  const [confirmPassword, setConfirmPassword] = useState('');  // 确认密码
+  const [isAdmin, setIsAdmin] = useState(false);  // 是否注册为管理员
+  const [adminKey, setAdminKey] = useState('');   // 管理员注册密钥
+  const [error, setError] = useState<string | null>(null);  // 错误信息
+  const [loading, setLoading] = useState(false);  // 加载状态
+  // 获取导航函数，用于在注册成功后重定向
   const navigate = useNavigate();
 
   // 管理员注册密钥 (在实际应用中，这应该存储在服务器端)
   const ADMIN_REGISTRATION_KEY = 'admin123';
 
+  // 处理表单提交
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
+    e.preventDefault();  // 阻止表单默认提交行为
+    setError(null);  // 清除之前的错误信息
 
     // 基本验证
     if (!username || !password) {
@@ -25,29 +32,33 @@ const Register: React.FC = () => {
       return;
     }
 
+    // 验证两次输入的密码是否一致
     if (password !== confirmPassword) {
       setError('两次输入的密码不一致');
       return;
     }
 
+    // 验证管理员注册密钥是否正确
     if (isAdmin && adminKey !== ADMIN_REGISTRATION_KEY) {
       setError('管理员注册密钥不正确');
       return;
     }
 
-    setLoading(true);
+    setLoading(true);  // 设置加载状态
 
     try {
+      // 调用注册API
       const user = await register(username, password, isAdmin);
       setLoading(false);
       
       // 根据用户角色跳转到不同页面
       if (user.role === 'admin') {
-        navigate('/admin');
+        navigate('/admin');  // 管理员跳转到管理页面
       } else {
-        navigate('/chat');
+        navigate('/chat');   // 普通用户跳转到聊天页面
       }
     } catch (err) {
+      // 处理注册失败
       setLoading(false);
       setError((err as Error).message);
     }
@@ -55,15 +66,18 @@ const Register: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      {/* 页面标题 */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           注册新账户
         </h2>
       </div>
 
+      {/* 注册表单卡片 */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* 用户名输入框 */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                 用户名
@@ -82,6 +96,7 @@ const Register: React.FC = () => {
               </div>
             </div>
 
+            {/* 密码输入框 */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 密码
@@ -100,6 +115,7 @@ const Register: React.FC = () => {
               </div>
             </div>
 
+            {/* 确认密码输入框 */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
                 确认密码
@@ -118,6 +134,7 @@ const Register: React.FC = () => {
               </div>
             </div>
 
+            {/* 管理员选项复选框 */}
             <div className="flex items-center">
               <input
                 id="isAdmin"
@@ -132,6 +149,7 @@ const Register: React.FC = () => {
               </label>
             </div>
 
+            {/* 管理员密钥输入框，仅在选择管理员角色时显示 */}
             {isAdmin && (
               <div>
                 <label htmlFor="adminKey" className="block text-sm font-medium text-gray-700">
@@ -153,6 +171,7 @@ const Register: React.FC = () => {
               </div>
             )}
 
+            {/* 错误信息显示 */}
             {error && (
               <div className="rounded-md bg-red-50 p-4">
                 <div className="flex">
@@ -163,6 +182,7 @@ const Register: React.FC = () => {
               </div>
             )}
 
+            {/* 注册按钮 */}
             <div>
               <button
                 type="submit"
@@ -173,6 +193,7 @@ const Register: React.FC = () => {
               </button>
             </div>
             
+            {/* 登录链接 */}
             <div className="text-sm text-center">
               <p className="text-gray-600">
                 已有账户？ 

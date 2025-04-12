@@ -1,18 +1,25 @@
+// 从React库导入React对象
 import React from 'react';
+// 导入ChatMessage类型定义
 import { ChatMessage as ChatMessageType } from '../types';
 
+// 定义组件属性接口
 interface ChatMessageProps {
-  message: ChatMessageType;
+  message: ChatMessageType;  // 单条消息数据
 }
 
+// 聊天消息组件：显示单条聊天消息
 const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
+  // 判断消息是否来自用户
   const isUser = message.role === 'user';
   
   return (
     <div className={`py-5 ${isUser ? 'bg-white' : 'bg-gray-50'}`}>
       <div className="max-w-3xl mx-auto px-4 flex">
+        {/* 消息发送者头像 */}
         <div className="h-8 w-8 rounded-full mr-3 flex-shrink-0 flex items-center justify-center">
           {isUser ? (
+            // 用户头像图标
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -29,6 +36,7 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
           ) : (
+            // AI助手头像图标
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="24"
@@ -47,10 +55,13 @@ const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
             </svg>
           )}
         </div>
+        {/* 消息内容区域 */}
         <div className="flex-1">
+          {/* 消息发送者名称 */}
           <div className="font-medium mb-1">
             {isUser ? '你' : 'AI助手'}
           </div>
+          {/* 消息文本内容 */}
           <div className="text-gray-700 prose">
             {message.content}
           </div>

@@ -1,30 +1,39 @@
+// 从React库导入React对象和useState钩子
 import React, { useState } from 'react';
+// 导入路由相关的钩子和组件
 import { useNavigate, Link } from 'react-router-dom';
+// 导入登录认证函数
 import { login } from '../utils/auth';
 
+// 登录页面组件
 const Login: React.FC = () => {
+  // 使用state钩子管理表单字段和状态
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // 获取导航函数，用于在登录成功后重定向
   const navigate = useNavigate();
 
+  // 处理表单提交
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
+    e.preventDefault(); // 阻止表单默认提交行为
+    setError(null); // 清除之前的错误信息
+    setLoading(true); // 设置加载状态
 
     try {
+      // 调用登录API
       const user = await login(username, password);
       setLoading(false);
       
       // 根据用户角色跳转到不同页面
       if (user.role === 'admin') {
-        navigate('/admin');
+        navigate('/admin'); // 管理员跳转到管理页面
       } else {
-        navigate('/chat');
+        navigate('/chat'); // 普通用户跳转到聊天页面
       }
     } catch (err) {
+      // 处理登录失败
       setLoading(false);
       setError((err as Error).message);
     }
@@ -32,15 +41,18 @@ const Login: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+      {/* 页面标题 */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
           登录您的账户
         </h2>
       </div>
 
+      {/* 登录表单卡片 */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {/* 用户名输入框 */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700">
                 用户名
@@ -59,6 +71,7 @@ const Login: React.FC = () => {
               </div>
             </div>
 
+            {/* 密码输入框 */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 密码
@@ -77,6 +90,7 @@ const Login: React.FC = () => {
               </div>
             </div>
 
+            {/* 错误信息显示 */}
             {error && (
               <div className="rounded-md bg-red-50 p-4">
                 <div className="flex">
@@ -87,6 +101,7 @@ const Login: React.FC = () => {
               </div>
             )}
 
+            {/* 登录按钮 */}
             <div>
               <button
                 type="submit"
@@ -97,6 +112,7 @@ const Login: React.FC = () => {
               </button>
             </div>
             
+            {/* 注册链接 */}
             <div className="flex items-center justify-end">
               <div className="text-sm">
                 <Link to="/register" className="font-medium text-indigo-600 hover:text-indigo-500">

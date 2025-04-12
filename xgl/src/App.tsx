@@ -1,13 +1,23 @@
+// 从node_modules中的'react'中导入React对象
 import React from 'react';
+/*
+  Router   作为根组件来包裹其他路由组件
+  Routes   作为很多路由的集合
+  Route    作为单个路由
+  Navigate 作为重定向
+*/
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+// 导入页面路由组件
 import Login from './routes/Login';
 import Register from './routes/Register';
 import UserChat from './routes/UserChat';
 import Admin from './routes/Admin';
+// 导入有关函数
 import { isAuthenticated, getCurrentUser } from './utils/auth';
+// 导入类型和接口
 import { UserRole } from './types';
 
-// 受保护的路由组件
+// 受保护的路由组件，控制用户访问权限
 const ProtectedRoute = ({ 
   children, 
   allowedRoles = [] 
@@ -26,6 +36,7 @@ const ProtectedRoute = ({
   return children;
 };
 
+// 主函数
 const App: React.FC = () => {
   return (
     <Router>

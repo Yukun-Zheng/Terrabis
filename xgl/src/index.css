@@ -1,5 +1,8 @@
+/* 引入 Tailwind 的基础样式 */
 @tailwind base;
+/* 引入 Tailwind 的组件样式 */
 @tailwind components;
+/* 引入 Tailwind 的工具类样式 */
 @tailwind utilities;
 
 body {
