@@ -1,5 +1,5 @@
 import React from 'react';
-import { Layers, Search, TableProperties, MapPin } from 'lucide-react';
+import { Layers, Search, PenTool } from 'lucide-react';
 
 /**
  * 底部控制栏容器样式
@@ -61,14 +61,14 @@ const infoBarStyle: React.CSSProperties = {
 };
 
 interface ToolButton {
-  id: 'search' | 'draw';
+  id: 'search' | 'draw' | 'layers';
   name: string;
 }
 
 interface BottomControlBarProps {
   tools: ToolButton[];
   activeTool: string | null;
-  onToolSelect: (toolId: 'search' | 'draw') => void;
+  onToolSelect: (toolId: 'search' | 'draw' | 'layers') => void;
 }
 
 /**
@@ -115,7 +115,8 @@ export const BottomControlBar: React.FC<BottomControlBarProps> = ({
   const getButtonIcon = (toolId: string) => {
     switch(toolId) {
       case 'search': return <Search size={16} />;
-      case 'draw': return <MapPin size={16} />;
+      case 'draw': return <PenTool size={16} />;
+      case 'layers': return <Layers size={16} />; 
       default: return null;
     }
   };

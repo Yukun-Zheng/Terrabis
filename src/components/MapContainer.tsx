@@ -6,13 +6,17 @@ import Debug from './Debug'; // 导入调试组件
 import TiandituMap, { BasemapType } from './TiandituMap'; // 导入纯天地图组件
 import { BottomControlBar } from './controls/BottomControlBar';
 import DrawingSidebar from './sidebars/DrawingSidebar'; // 导入新的绘制侧边栏组件
+import { LayerItem } from './controls/LayerControl'; // 保留LayerItem类型接口
+import HeatmapLayer from './layers/HeatmapLayer'; // 导入热力图图层
+import { chinaCityHeatData, getShenzhenHeatData } from '../data/heatmapData'; // 导入热力图数据
+import LayersSidebar from './sidebars/LayersSidebar'; // 导入图层侧边栏组件
 
 /**
  * 侧边栏状态接口
  */
 interface SidebarState {
   isOpen: boolean;
-  type: 'search' | 'draw' | null;
+  type: 'search' | 'draw' | 'layers' | null;
 }
 
 /**
@@ -30,7 +34,7 @@ interface MapContainerProps {
  * 底部工具栏按钮接口
  */
 interface ToolButton {
-  id: 'search' | 'draw';
+  id: 'search' | 'draw' | 'layers';
   name: string;
 }
 
@@ -63,6 +67,31 @@ const MapContainer: React.FC<MapContainerProps> = ({
   // 状态管理
   const [mapLoaded, setMapLoaded] = useState(false);
   const [activeBasemapId, setActiveBasemapId] = useState<BasemapType>('vec');
+  
+  // 图层状态
+  const [layers, setLayers] = useState<LayerItem[]>([
+    {
+      id: 'heatmap-china',
+      name: '中国城市热力图',
+      isVisible: false,
+      onToggle: (visible) => handleLayerToggle('heatmap-china', visible)
+    },
+    {
+      id: 'heatmap-shenzhen',
+      name: '深圳热力图',
+      isVisible: false,
+      onToggle: (visible) => handleLayerToggle('heatmap-shenzhen', visible)
+    }
+  ]);
+  
+  // 热力图数据
+  const [heatmapData] = useState({
+    china: chinaCityHeatData,
+    shenzhen: getShenzhenHeatData(200)
+  });
+  
+  // 热力图脚本加载状态
+  const [heatmapScriptLoaded, setHeatmapScriptLoaded] = useState(false);
   
   // 控件样式表
   useEffect(() => {
@@ -117,14 +146,55 @@ const MapContainer: React.FC<MapContainerProps> = ({
     };
   }, []);
   
-  // 底部工具栏配置 - 移除底图切换按钮
+  // 添加热力图脚本
+  useEffect(() => {
+    // 检查脚本是否已经存在
+    if (document.getElementById('tianditu-heatmap-script')) {
+      setHeatmapScriptLoaded(true);
+      return;
+    }
+    
+    // 加载热力图脚本
+    const script = document.createElement('script');
+    script.id = 'tianditu-heatmap-script';
+    script.src = 'https://lbs.tianditu.gov.cn/api/js4.0/opensource/openlibrary/HeatmapOverlay.js';
+    script.async = true;
+    script.onload = () => {
+      console.log('天地图热力图脚本加载成功');
+      setHeatmapScriptLoaded(true);
+    };
+    script.onerror = (error) => {
+      console.error('天地图热力图脚本加载失败:', error);
+    };
+    
+    document.head.appendChild(script);
+    
+    return () => {
+      // 清理函数 - 如果组件卸载则移除脚本
+      if (document.getElementById('tianditu-heatmap-script')) {
+        document.getElementById('tianditu-heatmap-script')?.remove();
+      }
+    };
+  }, []);
+  
+  // 底部工具栏配置
   const toolbarItems: ToolButton[] = [
     { id: 'search', name: '搜索' },
-    { id: 'draw', name: '绘制' }
+    { id: 'draw', name: '绘制' },
+    { id: 'layers', name: '图层' }
   ];
   
+  // 处理图层切换
+  const handleLayerToggle = (layerId: string, visible: boolean) => {
+    setLayers(prev => prev.map(layer => 
+      layer.id === layerId 
+        ? { ...layer, isVisible: visible } 
+        : layer
+    ));
+  };
+  
   // 处理侧边栏切换
-  const handleSidebarToggle = (type: 'search' | 'draw') => {
+  const handleSidebarToggle = (type: 'search' | 'draw' | 'layers') => {
     setSidebar(prev => {
       // 如果点击当前打开的侧边栏类型，则关闭侧边栏
       if (prev.isOpen && prev.type === type) {
@@ -239,6 +309,36 @@ const MapContainer: React.FC<MapContainerProps> = ({
         onBasemapChange={handleBasemapChange}
       />
       
+      {/* 热力图图层 - 只有在地图加载完成且热力图脚本加载完成后才渲染 */}
+      {mapLoaded && heatmapScriptLoaded && tiandituMapRef.current && (
+        <>
+          {/* 中国城市热力图 */}
+          <HeatmapLayer 
+            map={tiandituMapRef.current.getMap()} 
+            data={heatmapData.china}
+            visible={layers.find(l => l.id === 'heatmap-china')?.isVisible || false}
+            maxValue={300}
+            radius={30}
+          />
+          
+          {/* 深圳热力图 */}
+          <HeatmapLayer 
+            map={tiandituMapRef.current.getMap()} 
+            data={heatmapData.shenzhen}
+            visible={layers.find(l => l.id === 'heatmap-shenzhen')?.isVisible || false}
+            maxValue={100}
+            radius={25}
+            gradient={{
+              '0.4': 'blue',
+              '0.6': 'cyan',
+              '0.7': 'lime',
+              '0.8': 'yellow',
+              '1.0': 'red'
+            }}
+          />
+        </>
+      )}
+      
       {/* 自定义定位控件 */}
       {mapLoaded && (
         <div 
@@ -301,6 +401,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
         <DrawingSidebar
           onClose={handleCloseSidebar}
           mapRef={tiandituMapRef}
+        />
+      )}
+      
+      {sidebar.isOpen && sidebar.type === 'layers' && (
+        <LayersSidebar
+          onClose={handleCloseSidebar}
+          layers={layers}
+          onToggleLayer={handleLayerToggle}
         />
       )}
     </div>

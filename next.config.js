@@ -4,7 +4,7 @@ const nextConfig = {
   transpilePackages: ['lucide-react'],
   // 允许外部图像域
   images: {
-    domains: ['api.tianditu.gov.cn', 't0.tianditu.gov.cn'],
+    domains: ['api.tianditu.gov.cn', 't0.tianditu.gov.cn', 'lbs.tianditu.gov.cn'],
   },
   // 为web端集成做准备
   async headers() {

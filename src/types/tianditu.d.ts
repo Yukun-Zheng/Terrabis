@@ -239,6 +239,18 @@ declare namespace T {
     addEventListener(eventName: string, handler: Function): void;
     getLngLats(): LngLat[];
   }
+
+  // 热力图覆盖物类
+  class HeatmapOverlay {
+    constructor(options?: {
+      radius?: number;
+      opacity?: number;
+      gradient?: Record<string, string>;
+    });
+    setDataSet(data: { data: any[]; max: number }): void;
+    show(): void;
+    hide(): void;
+  }
 }
 
 // 扩展Window接口，使其包含天地图API
