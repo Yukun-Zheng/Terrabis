@@ -43,14 +43,29 @@ export const geocodeAddress = async (address: string): Promise<GeocodeResult[]> 
         const locations = Array.isArray(location) ? location : [location];
         
         // 转换为GeocodeResult格式
-        const formattedResults = locations.map((item: any) => ({
-          id: item.id || String(Math.random()),
-          name: item.name || address,
-          address: item.address || '',
-          center: [item.lnt, item.lat] as [number, number],
-          place_name: item.name, // 兼容旧接口
-          source: 'tianditu'
-        }));
+        const formattedResults = locations.map((item: any) => {
+          // 确保经纬度是数值类型
+          const lng = parseFloat(item.lnt);
+          const lat = parseFloat(item.lat);
+          
+          if (isNaN(lng) || isNaN(lat)) {
+            console.warn('搜索结果包含无效坐标:', item);
+          }
+          
+          return {
+            id: item.id || String(Math.random()),
+            name: item.name || address,
+            address: item.address || '',
+            center: [lng, lat] as [number, number],
+            place_name: item.name, // 兼容旧接口
+            source: 'tianditu'
+          };
+        }).filter(item => 
+          // 过滤掉无效坐标
+          !isNaN(item.center[0]) && !isNaN(item.center[1]) && 
+          item.center[0] !== 0 && item.center[1] !== 0
+        );
+        
         resolve(formattedResults);
       } else {
         reject(new Error(`地理编码失败，状态码: ${result.getStatus()}`));

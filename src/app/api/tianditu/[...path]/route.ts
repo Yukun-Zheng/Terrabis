@@ -18,11 +18,11 @@ const CACHE_HEADERS = {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  context: { params: { path: string[] } }
 ) {
   try {
     // 获取完整路径
-    const path = params.path || [];
+    const path = context.params.path || [];
     const pathString = path.join('/');
     
     // 从URL获取查询参数

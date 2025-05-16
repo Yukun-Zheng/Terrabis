@@ -44,24 +44,47 @@ const TiandituMap = forwardRef<any, TiandituMapProps>(({
   // 初始化天地图
   useEffect(() => {
     // 如果页面中已经有天地图脚本，则不重复加载
-    if (document.getElementById('tianditu-api')) {
+    if (document.getElementById('tianditu-api') && window.T) {
+      console.log('天地图API已加载，直接初始化地图');
       initMap();
       return;
     }
 
+    console.log('开始加载天地图API...');
+    
+    // 添加天地图API引用标识
+    window.TIANDITU_API_LOADING = true;
+    
     // 加载天地图API - 使用HTTPS版本
     const script = document.createElement('script');
     script.id = 'tianditu-api';
-    script.src = `https://api.tianditu.gov.cn/api?v=4.0&tk=${TIANDITU_API_KEY}`;
+    script.src = `https://api.tianditu.gov.cn/api?v=4.0&tk=${TIANDITU_API_KEY}&callback=onTiandituLoaded`;
     script.async = true;
     
-    script.onload = () => {
-      console.log('天地图API加载成功');
+    // 创建全局回调函数
+    window.onTiandituLoaded = () => {
+      console.log('天地图API加载成功，通过回调函数');
+      window.TIANDITU_API_LOADED = true;
+      delete window.TIANDITU_API_LOADING;
       initMap();
+    };
+    
+    script.onload = () => {
+      console.log('天地图API脚本加载完成');
+      // 如果10秒后回调还未触发，强制初始化
+      setTimeout(() => {
+        if (!window.TIANDITU_API_LOADED && window.T) {
+          console.warn('回调未触发，手动初始化地图');
+          delete window.TIANDITU_API_LOADING;
+          window.TIANDITU_API_LOADED = true;
+          initMap();
+        }
+      }, 10000);
     };
     
     script.onerror = (e) => {
       console.error('天地图API加载失败', e);
+      delete window.TIANDITU_API_LOADING;
       setMapError('天地图API加载失败，请检查网络连接或API密钥是否正确');
     };
     
@@ -95,8 +118,8 @@ const TiandituMap = forwardRef<any, TiandituMapProps>(({
       const createTileLayerUrl = (baseType: string) => {
         // 返回获取瓦片URL的函数
         return (x: number, y: number, z: number) => {
-          // 使用本地运行的代理服务器（端口3001）
-          return `http://localhost:3001/tianditu/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
+          // 使用API路由作为代理
+          return `${TIANDITU_PROXY_URL}/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
         };
       };
       

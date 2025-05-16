@@ -36,37 +36,75 @@ const HeatmapLayer: React.FC<HeatmapLayerProps> = ({
 
   // 初始化热力图
   useEffect(() => {
-    if (!map || !window.T || !window.T.HeatmapOverlay) {
-      console.error('热力图初始化失败: T.HeatmapOverlay不可用，请确保天地图热力图脚本已加载');
+    // 检查必要条件
+    if (!map) {
+      console.error('热力图初始化失败: 地图实例不存在');
       return;
     }
     
-    try {
-      // 配置热力图
-      const options: any = {
-        radius: radius || 30,
-        opacity: opacity * 100, // 天地图API使用1-100的透明度范围
-      };
+    if (!window.T) {
+      console.error('热力图初始化失败: 天地图API未加载');
+      return;
+    }
+
+    // 检查热力图类是否存在
+    if (!window.T.HeatmapOverlay) {
+      console.error('热力图初始化失败: T.HeatmapOverlay不可用，请确保天地图热力图脚本已加载');
       
-      if (gradient) {
-        options.gradient = gradient;
+      // 尝试等待脚本加载
+      let checkCount = 0;
+      const maxChecks = 10;  // 最多检查10次
+      
+      const checkInterval = setInterval(() => {
+        checkCount++;
+        
+        if (window.T && window.T.HeatmapOverlay) {
+          console.log('热力图类现在可用，开始初始化');
+          clearInterval(checkInterval);
+          initHeatmap();
+        } else if (checkCount >= maxChecks) {
+          console.error(`已尝试${maxChecks}次，热力图类仍然不可用`);
+          clearInterval(checkInterval);
+        }
+      }, 1000);  // 每秒检查一次
+      
+      return () => clearInterval(checkInterval);
+    }
+    
+    // 初始化热力图
+    initHeatmap();
+    
+    // 热力图初始化函数
+    function initHeatmap() {
+      try {
+        // 配置热力图
+        const options: any = {
+          radius: radius || 30,
+          opacity: opacity * 100, // 天地图API使用1-100的透明度范围
+        };
+        
+        if (gradient) {
+          options.gradient = gradient;
+        }
+        
+        console.log('初始化热力图，配置:', options);
+        
+        // 创建热力图实例
+        heatmapRef.current = new window.T.HeatmapOverlay(options);
+        
+        // 添加热力图到地图
+        map.addOverLay(heatmapRef.current);
+        
+        // 设置数据
+        updateHeatmap();
+        
+        loadedRef.current = true;
+        if (onLoad) onLoad();
+        
+        console.log('热力图初始化成功');
+      } catch (err) {
+        console.error('初始化热力图失败:', err);
       }
-      
-      // 创建热力图实例
-      heatmapRef.current = new window.T.HeatmapOverlay(options);
-      
-      // 添加热力图到地图
-      map.addOverLay(heatmapRef.current);
-      
-      // 设置数据
-      updateHeatmap();
-      
-      loadedRef.current = true;
-      if (onLoad) onLoad();
-      
-      console.log('热力图初始化成功');
-    } catch (err) {
-      console.error('初始化热力图失败:', err);
     }
     
     return () => {

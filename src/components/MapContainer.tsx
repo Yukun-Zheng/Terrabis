@@ -148,34 +148,81 @@ const MapContainer: React.FC<MapContainerProps> = ({
   
   // 添加热力图脚本
   useEffect(() => {
-    // 检查脚本是否已经存在
-    if (document.getElementById('tianditu-heatmap-script')) {
-      setHeatmapScriptLoaded(true);
-      return;
-    }
+    // 等待天地图API加载完成后再加载热力图
+    const waitForTiandituAPI = () => {
+      if (window.T && window.TIANDITU_API_LOADED) {
+        console.log('天地图API已加载，准备加载热力图脚本');
+        loadHeatmapScript();
+      } else {
+        console.log('等待天地图API加载...');
+        setTimeout(waitForTiandituAPI, 500);
+      }
+    };
     
     // 加载热力图脚本
-    const script = document.createElement('script');
-    script.id = 'tianditu-heatmap-script';
-    script.src = 'https://lbs.tianditu.gov.cn/api/js4.0/opensource/openlibrary/HeatmapOverlay.js';
-    script.async = true;
-    script.onload = () => {
-      console.log('天地图热力图脚本加载成功');
-      setHeatmapScriptLoaded(true);
-    };
-    script.onerror = (error) => {
-      console.error('天地图热力图脚本加载失败:', error);
+    const loadHeatmapScript = () => {
+      // 检查脚本或对象是否已经存在
+      if (document.getElementById('tianditu-heatmap-script')) {
+        console.log('热力图脚本已存在');
+        setHeatmapScriptLoaded(true);
+        return;
+      }
+      
+      // 检查HeatmapOverlay对象是否已经存在
+      if (window.T && window.T.HeatmapOverlay) {
+        console.log('热力图对象已存在');
+        setHeatmapScriptLoaded(true);
+        return;
+      }
+      
+      console.log('开始加载热力图脚本');
+      
+      // 加载热力图脚本
+      const script = document.createElement('script');
+      script.id = 'tianditu-heatmap-script';
+      script.src = 'https://lbs.tianditu.gov.cn/api/js4.0/opensource/openlibrary/HeatmapOverlay.js';
+      script.async = false; // 设置为同步加载确保顺序正确
+      
+      script.onload = () => {
+        console.log('天地图热力图脚本加载成功');
+        
+        // 确认HeatmapOverlay对象已创建
+        if (window.T && window.T.HeatmapOverlay) {
+          console.log('成功获取HeatmapOverlay对象');
+          setHeatmapScriptLoaded(true);
+        } else {
+          console.error('热力图脚本加载完成，但HeatmapOverlay对象不存在');
+          
+          // 尝试重新检查，可能有延迟
+          setTimeout(() => {
+            if (window.T && window.T.HeatmapOverlay) {
+              console.log('延迟后获取到HeatmapOverlay对象');
+              setHeatmapScriptLoaded(true);
+            }
+          }, 1000);
+        }
+      };
+      
+      script.onerror = (error) => {
+        console.error('天地图热力图脚本加载失败:', error);
+      };
+      
+      document.head.appendChild(script);
     };
     
-    document.head.appendChild(script);
+    // 开始等待天地图API加载完成
+    if (mapLoaded) {
+      waitForTiandituAPI();
+    }
     
     return () => {
       // 清理函数 - 如果组件卸载则移除脚本
-      if (document.getElementById('tianditu-heatmap-script')) {
-        document.getElementById('tianditu-heatmap-script')?.remove();
+      const heatmapScript = document.getElementById('tianditu-heatmap-script');
+      if (heatmapScript) {
+        heatmapScript.remove();
       }
     };
-  }, []);
+  }, [mapLoaded]);
   
   // 底部工具栏配置
   const toolbarItems: ToolButton[] = [
@@ -238,27 +285,48 @@ const MapContainer: React.FC<MapContainerProps> = ({
   
   // 处理位置选择
   const handleLocationSelect = (location: GeocodeResult) => {
-    if (tiandituMapRef.current && location.center) {
-      // 使用天地图的方法进行定位
-      const map = tiandituMapRef.current.getMap();
-      if (map) {
+    if (!tiandituMapRef.current) {
+      console.error('地图实例不存在，无法定位');
+      return;
+    }
+    
+    if (!location.center || !Array.isArray(location.center) || location.center.length < 2) {
+      console.error('无效的位置坐标:', location.center);
+      return;
+    }
+    
+    const [lng, lat] = location.center;
+    
+    if (!lng || !lat || isNaN(lng) || isNaN(lat) || lng === 0 || lat === 0) {
+      console.error('位置坐标值无效:', lng, lat);
+      return;
+    }
+    
+    // 使用天地图的方法进行定位
+    const map = tiandituMapRef.current.getMap();
+    if (map) {
+      try {
+        console.log('平移地图到位置:', location.center, '位置名称:', location.name);
+        
         // 清除现有的标记，避免叠加
         map.clearOverLays();
         
-        // 创建坐标点
-        const lnglat = new window.T.LngLat(location.center[0], location.center[1]);
+        // 创建坐标点 - 确保使用正确的经纬度格式
+        const lnglat = new window.T.LngLat(lng, lat);
         
-        // 设置地图中心和缩放级别
-        map.centerAndZoom(lnglat, 14);
+        // 设置地图中心和缩放级别 - 使用panTo而不是centerAndZoom来实现平滑的过渡
+        map.panTo(lnglat);
+        map.setZoom(14); // 设置合适的缩放级别
         
         // 创建标记点
         const marker = new window.T.Marker(lnglat);
         
         // 创建信息窗口，显示位置信息
         const infoWindow = new window.T.InfoWindow(`
-          <div style="padding: 5px;">
+          <div style="padding: 8px;">
             <h4 style="margin: 0 0 5px 0;">${location.name}</h4>
             ${location.address ? `<p style="margin: 0; font-size: 12px; color: #666;">${location.address}</p>` : ''}
+            <p style="margin: 3px 0 0 0; font-size: 12px; color: #999;">经度: ${lng.toFixed(6)}, 纬度: ${lat.toFixed(6)}</p>
           </div>
         `);
         
@@ -270,12 +338,18 @@ const MapContainer: React.FC<MapContainerProps> = ({
           marker.openInfoWindow(infoWindow);
         });
         
-        // 自动打开信息窗口
-        marker.openInfoWindow(infoWindow);
+        // 延迟一下自动打开信息窗口，确保地图已完成平移
+        setTimeout(() => {
+          marker.openInfoWindow(infoWindow);
+        }, 300);
         
         // 关闭侧边栏
         handleCloseSidebar();
+      } catch (err) {
+        console.error('定位到搜索位置时出错:', err);
       }
+    } else {
+      console.warn('无法获取地图实例');
     }
   };
   

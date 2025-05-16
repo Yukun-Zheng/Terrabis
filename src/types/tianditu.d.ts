@@ -11,7 +11,7 @@ declare namespace T {
   const DRAWING_POLYGON: string;
   
   class Map {
-    constructor(container: string, options?: MapOptions);
+    constructor(container: string | HTMLElement, options?: MapOptions);
     centerAndZoom(center: LngLat, zoom: number): void;
     addControl(control: Control.Scale | Control.Zoom | Control.MapType): void;
     clearOverLays(): void;
@@ -66,21 +66,31 @@ declare namespace T {
 
   class Geocoder {
     constructor(options?: any);
-    getLocation(keyword: string, callback: Function): void;
-    getPoint(keyword: string, callback: Function): void;
+    getLocation(keyword: string, callback: (result: GeocoderResult) => void): void;
+    getPoint(keyword: string, callback: (result: GeocoderResult) => void): void;
   }
 
   interface GeocoderResult {
     getStatus(): number;
-    getLocationPoint(): Array<GeocoderLocation>;
+    getLocationPoint(): GeocoderLocation | GeocoderLocation[] | null;
+    getPoiList?(): any[];
+    getMessage?(): string;
+    getPois?(): PoiResult[];
+    getResultType?(): number;
+    getSuggests?(): SuggestResult[];
+    getStatistics?(): StatisticsResult;
+    getArea?(): AreaResult;
   }
 
   interface GeocoderLocation {
     id?: string;
     name?: string;
     address?: string;
-    lnt: number; // 经度
-    lat: number; // 纬度
+    lnt: number | string; // 经度 - 可能是数字或字符串
+    lat: number | string; // 纬度 - 可能是数字或字符串
+    phone?: string;
+    type?: string;
+    tags?: string[];
   }
 
   // 标注工具
@@ -251,9 +261,89 @@ declare namespace T {
     show(): void;
     hide(): void;
   }
+
+  // 本地搜索类
+  class LocalSearch {
+    constructor(map: Map, options?: LocalSearchOptions);
+    search(keyword: string, type?: number): void;
+    searchNearby(keyword: string, center: LngLat, radius: number): void;
+    searchInBounds(keyword: string, bounds: LngLatBounds): void;
+    clearResults(): void;
+    setPageIndex(pageIndex: number): void;
+    setPageCapacity(pageCapacity: number): void;
+    getPageIndex(): number;
+    getPageCapacity(): number;
+    getCountNumber(): number;
+    getCountPage(): number;
+  }
+
+  // 本地搜索配置选项
+  interface LocalSearchOptions {
+    pageCapacity?: number;
+    onSearchComplete?: Function;
+    policy?: number;
+  }
+
+  // 本地搜索结果接口
+  interface LocalSearchResult {
+    getType(): string;
+    getResultType(): number;
+    getPois(): PoiResult[];
+    getSuggests(): SuggestResult[];
+    getStatistics(): StatisticsResult;
+    getArea(): AreaResult;
+  }
+
+  // 兴趣点结果接口
+  interface PoiResult {
+    id?: string;
+    name: string;
+    address: string;
+    lonlat: string; // 格式: "经度 纬度"
+    phone?: string;
+    website?: string;
+    category?: string;
+  }
+
+  // 建议结果接口
+  interface SuggestResult {
+    name: string;
+    address: string;
+  }
+
+  // 统计结果接口
+  interface StatisticsResult {
+    priorityCitys?: {
+      name: string;
+      count: number;
+    }[];
+  }
+
+  // 区域结果接口
+  interface AreaResult {
+    // 区域相关属性
+    name?: string;
+    level?: number;
+    boundary?: string;
+  }
+
+  // 公交换乘类
+  class TransitRoute {
+    constructor(map: Map, options?: TransitRouteOptions);
+    search(start: string | LngLat, end: string | LngLat): void;
+  }
+
+  // 公交换乘配置选项
+  interface TransitRouteOptions {
+    policy?: number; // 策略：0最少时间，1最少换乘，2最少步行，3最短距离
+    onSearchComplete?: Function;
+  }
 }
 
 // 扩展Window接口，使其包含天地图API
 interface Window {
   T: typeof T;
+  TIANDITU_API_LOADING?: boolean;
+  TIANDITU_API_LOADED?: boolean;
+  onTiandituLoaded?: () => void;
 } 
