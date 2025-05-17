@@ -9,6 +9,7 @@ import DrawingSidebar from './sidebars/DrawingSidebar'; // 导入新的绘制侧
 import { LayerItem } from './controls/LayerControl'; // 保留LayerItem类型接口
 import HeatmapLayer from './layers/HeatmapLayer'; // 导入热力图图层
 import { chinaCityHeatData, getShenzhenHeatData } from '../data/heatmapData'; // 导入热力图数据
+import { chinaFullHeatData } from '../data/chinaFullHeatData'; // 导入完整的中国城市热力图数据
 import LayersSidebar from './sidebars/LayersSidebar'; // 导入图层侧边栏组件
 
 /**
@@ -81,13 +82,20 @@ const MapContainer: React.FC<MapContainerProps> = ({
       name: '深圳热力图',
       isVisible: false,
       onToggle: (visible) => handleLayerToggle('heatmap-shenzhen', visible)
+    },
+    {
+      id: 'heatmap-china-full',
+      name: '中国城市热力图(完整版)',
+      isVisible: false,
+      onToggle: (visible) => handleLayerToggle('heatmap-china-full', visible)
     }
   ]);
   
   // 热力图数据
   const [heatmapData] = useState({
     china: chinaCityHeatData,
-    shenzhen: getShenzhenHeatData(200)
+    shenzhen: getShenzhenHeatData(200),
+    chinaFull: chinaFullHeatData
   });
   
   // 热力图脚本加载状态
@@ -408,6 +416,20 @@ const MapContainer: React.FC<MapContainerProps> = ({
               '0.7': 'lime',
               '0.8': 'yellow',
               '1.0': 'red'
+            }}
+          />
+          
+          {/* 中国城市热力图(完整版) */}
+          <HeatmapLayer 
+            map={tiandituMapRef.current.getMap()} 
+            data={heatmapData.chinaFull}
+            visible={layers.find(l => l.id === 'heatmap-china-full')?.isVisible || false}
+            maxValue={300}
+            radius={30}
+            gradient={{
+              '0.2': 'rgb(0, 255, 255)',
+              '0.5': 'rgb(0, 110, 255)',
+              '0.8': 'rgb(100, 0, 255)'
             }}
           />
         </>
