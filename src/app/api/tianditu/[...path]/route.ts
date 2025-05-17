@@ -57,6 +57,7 @@ export async function GET(
     
     // 如果响应不成功，返回错误
     if (!response.ok) {
+      console.error(`天地图服务器响应错误: ${response.status} ${response.statusText} - URL: ${targetUrl}`);
       return new NextResponse(`天地图服务器错误: ${response.statusText}`, {
         status: response.status,
       });
@@ -69,14 +70,24 @@ export async function GET(
     let contentType = response.headers.get('content-type') || 'image/png';
     
     // 确保瓦片请求返回正确的图像内容类型
-    if (pathString.includes('wmts') || 
-        pathString.includes('vec') || 
-        pathString.includes('cva') || 
-        pathString.includes('img') || 
-        pathString.includes('cia') || 
-        pathString.includes('ter') || 
-        pathString.includes('cta')) {
+    // 包含所有可能的瓦片路径模式
+    if (
+      pathString.includes('wmts') || 
+      pathString.includes('vec_w') || 
+      pathString.includes('cva_w') || 
+      pathString.includes('img_w') || 
+      pathString.includes('cia_w') || 
+      pathString.includes('ter_w') || 
+      pathString.includes('cta_w') ||
+      pathString.includes('vec_c') || 
+      pathString.includes('cva_c') || 
+      pathString.includes('img_c') || 
+      pathString.includes('cia_c') || 
+      pathString.includes('ter_c') || 
+      pathString.includes('cta_c')
+    ) {
       contentType = 'image/png';
+      console.log(`设置瓦片内容类型为image/png，请求路径: ${pathString}`);
     }
     
     // 返回响应

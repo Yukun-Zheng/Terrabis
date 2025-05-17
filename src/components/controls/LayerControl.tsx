@@ -8,6 +8,11 @@ export interface LayerItem {
   id: string;
   name: string;
   isVisible: boolean;
+  opacity?: number; // 透明度
+  color?: string; // 颜色
+  fillColor?: string; // 填充颜色
+  weight?: number; // 线宽
+  type?: 'heatmap' | 'geojson' | 'other'; // 图层类型
   onToggle: (visible: boolean) => void;
 }
 

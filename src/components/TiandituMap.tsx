@@ -118,36 +118,48 @@ const TiandituMap = forwardRef<any, TiandituMapProps>(({
       const createTileLayerUrl = (baseType: string) => {
         // 返回获取瓦片URL的函数
         return (x: number, y: number, z: number) => {
-          // 使用API路由作为代理
-          return `${TIANDITU_PROXY_URL}/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
+          // 使用正确的代理URL格式 - 关键修复
+          return `/api/tianditu/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
         };
       };
       
       // 矢量底图及注记
       const vecLayer = new window.T.TileLayer('vec', {
-        getTileUrl: createTileLayerUrl('vec')
+        getTileUrl: createTileLayerUrl('vec'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       const cvaLayer = new window.T.TileLayer('cva', {
-        getTileUrl: createTileLayerUrl('cva')
+        getTileUrl: createTileLayerUrl('cva'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       // 影像底图及注记
       const imgLayer = new window.T.TileLayer('img', {
-        getTileUrl: createTileLayerUrl('img')
+        getTileUrl: createTileLayerUrl('img'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       const ciaLayer = new window.T.TileLayer('cia', {
-        getTileUrl: createTileLayerUrl('cia')
+        getTileUrl: createTileLayerUrl('cia'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       // 地形底图及注记
       const terLayer = new window.T.TileLayer('ter', {
-        getTileUrl: createTileLayerUrl('ter')
+        getTileUrl: createTileLayerUrl('ter'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       const ctaLayer = new window.T.TileLayer('cta', {
-        getTileUrl: createTileLayerUrl('cta')
+        getTileUrl: createTileLayerUrl('cta'),
+        minZoom: 1,
+        maxZoom: 18
       });
       
       return {

@@ -11,6 +11,9 @@ import HeatmapLayer from './layers/HeatmapLayer'; // 导入热力图图层
 import { chinaCityHeatData, getShenzhenHeatData } from '../data/heatmapData'; // 导入热力图数据
 import { chinaFullHeatData } from '../data/chinaFullHeatData'; // 导入完整的中国城市热力图数据
 import LayersSidebar from './sidebars/LayersSidebar'; // 导入图层侧边栏组件
+import GeoJsonLayer from './layers/GeoJsonLayer';
+import RegionInfoDialog from './RegionInfoDialog';
+import { loadGeoJson } from '../utils/geoJsonLoader';
 
 /**
  * 侧边栏状态接口
@@ -75,19 +78,55 @@ const MapContainer: React.FC<MapContainerProps> = ({
       id: 'heatmap-china',
       name: '中国城市热力图',
       isVisible: false,
+      opacity: 0.7,
+      type: 'heatmap',
       onToggle: (visible) => handleLayerToggle('heatmap-china', visible)
     },
     {
       id: 'heatmap-shenzhen',
       name: '深圳热力图',
       isVisible: false,
+      opacity: 0.7,
+      type: 'heatmap',
       onToggle: (visible) => handleLayerToggle('heatmap-shenzhen', visible)
     },
     {
       id: 'heatmap-china-full',
       name: '中国城市热力图(完整版)',
       isVisible: false,
+      opacity: 0.7,
+      type: 'heatmap',
       onToggle: (visible) => handleLayerToggle('heatmap-china-full', visible)
+    },
+    {
+      id: 'geojson-china',
+      name: '中国省级行政区',
+      isVisible: false,
+      opacity: 0.5,
+      color: '#1890ff',
+      fillColor: 'rgba(24, 144, 255, 0.1)',
+      type: 'geojson',
+      onToggle: (visible) => handleLayerToggle('geojson-china', visible)
+    },
+    {
+      id: 'geojson-guangdong',
+      name: '广东省行政边界',
+      isVisible: false,
+      opacity: 0.5,
+      color: '#52c41a',
+      fillColor: 'rgba(82, 196, 26, 0.15)',
+      type: 'geojson',
+      onToggle: (visible) => handleLayerToggle('geojson-guangdong', visible)
+    },
+    {
+      id: 'geojson-shenzhen',
+      name: '深圳市行政边界',
+      isVisible: false,
+      opacity: 0.5,
+      color: '#fa8c16',
+      fillColor: 'rgba(250, 140, 22, 0.2)',
+      type: 'geojson',
+      onToggle: (visible) => handleLayerToggle('geojson-shenzhen', visible)
     }
   ]);
   
@@ -100,6 +139,71 @@ const MapContainer: React.FC<MapContainerProps> = ({
   
   // 热力图脚本加载状态
   const [heatmapScriptLoaded, setHeatmapScriptLoaded] = useState(false);
+  
+  // 在组件内部添加状态
+  const [geoJsonData, setGeoJsonData] = useState<{ [key: string]: any }>({});
+  const [selectedRegion, setSelectedRegion] = useState<any>(null);
+  const [clickPosition, setClickPosition] = useState<{ lng: number; lat: number } | null>(null);
+  const [showRegionInfo, setShowRegionInfo] = useState<boolean>(false);
+  
+  // 添加加载GeoJSON数据的useEffect
+  useEffect(() => {
+    const loadAllGeoJsonData = async () => {
+      try {
+        console.log('开始加载GeoJSON数据文件...');
+        
+        // 加载中国省级行政区域
+        const chinaData = await loadGeoJson('/data/中国_省.geojson');
+        if (chinaData) {
+          setGeoJsonData(prev => ({ ...prev, china: chinaData }));
+          console.log('中国省级行政区域数据加载成功', chinaData.features?.length || 0, '个特征');
+        } else {
+          console.error('中国省级行政区域数据加载失败');
+        }
+        
+        // 加载广东省行政区域
+        const guangdongData = await loadGeoJson('/data/广东省_省.geojson');
+        if (guangdongData) {
+          setGeoJsonData(prev => ({ ...prev, guangdong: guangdongData }));
+          console.log('广东省行政区域数据加载成功', guangdongData.features?.length || 0, '个特征');
+        } else {
+          console.error('广东省行政区域数据加载失败');
+        }
+        
+        // 加载深圳市行政区域
+        const shenzhenData = await loadGeoJson('/data/深圳市_市.geojson');
+        if (shenzhenData) {
+          setGeoJsonData(prev => ({ ...prev, shenzhen: shenzhenData }));
+          console.log('深圳市行政区域数据加载成功', shenzhenData.features?.length || 0, '个特征');
+        } else {
+          console.error('深圳市行政区域数据加载失败');
+        }
+        
+        console.log('所有GeoJSON数据加载完成');
+      } catch (err) {
+        console.error('加载GeoJSON数据失败:', err);
+      }
+    };
+    
+    loadAllGeoJsonData();
+  }, []);
+  
+  // 添加处理区域点击事件的函数
+  const handleRegionClick = (feature: any, lnglat: any) => {
+    console.log('区域点击:', feature, lnglat);
+    setSelectedRegion(feature);
+    setClickPosition(lnglat);
+    setShowRegionInfo(true);
+  };
+  
+  // 添加处理透明度变化的函数
+  const handleOpacityChange = (layerId: string, opacity: number) => {
+    setLayers(prev => prev.map(layer => 
+      layer.id === layerId 
+        ? { ...layer, opacity } 
+        : layer
+    ));
+  };
   
   // 控件样式表
   useEffect(() => {
@@ -438,6 +542,45 @@ const MapContainer: React.FC<MapContainerProps> = ({
         </>
       )}
       
+      {/* GeoJSON图层 - 中国省级边界 */}
+      {mapLoaded && geoJsonData.china && tiandituMapRef.current && (
+        <GeoJsonLayer
+          map={tiandituMapRef.current.getMap()}
+          data={geoJsonData.china}
+          visible={layers.find(l => l.id === 'geojson-china')?.isVisible || false}
+          opacity={layers.find(l => l.id === 'geojson-china')?.opacity || 0.5}
+          color={layers.find(l => l.id === 'geojson-china')?.color || '#1890ff'}
+          fillColor={layers.find(l => l.id === 'geojson-china')?.fillColor || 'rgba(24, 144, 255, 0.1)'}
+          onClick={handleRegionClick}
+        />
+      )}
+      
+      {/* GeoJSON图层 - 广东省边界 */}
+      {mapLoaded && geoJsonData.guangdong && tiandituMapRef.current && (
+        <GeoJsonLayer
+          map={tiandituMapRef.current.getMap()}
+          data={geoJsonData.guangdong}
+          visible={layers.find(l => l.id === 'geojson-guangdong')?.isVisible || false}
+          opacity={layers.find(l => l.id === 'geojson-guangdong')?.opacity || 0.5}
+          color={layers.find(l => l.id === 'geojson-guangdong')?.color || '#52c41a'}
+          fillColor={layers.find(l => l.id === 'geojson-guangdong')?.fillColor || 'rgba(82, 196, 26, 0.15)'}
+          onClick={handleRegionClick}
+        />
+      )}
+      
+      {/* GeoJSON图层 - 深圳市边界 */}
+      {mapLoaded && geoJsonData.shenzhen && tiandituMapRef.current && (
+        <GeoJsonLayer
+          map={tiandituMapRef.current.getMap()}
+          data={geoJsonData.shenzhen}
+          visible={layers.find(l => l.id === 'geojson-shenzhen')?.isVisible || false}
+          opacity={layers.find(l => l.id === 'geojson-shenzhen')?.opacity || 0.5}
+          color={layers.find(l => l.id === 'geojson-shenzhen')?.color || '#fa8c16'}
+          fillColor={layers.find(l => l.id === 'geojson-shenzhen')?.fillColor || 'rgba(250, 140, 22, 0.2)'}
+          onClick={handleRegionClick}
+        />
+      )}
+      
       {/* 自定义定位控件 */}
       {mapLoaded && (
         <div 
@@ -446,31 +589,94 @@ const MapContainer: React.FC<MapContainerProps> = ({
           onClick={() => {
             if (tiandituMapRef.current && window.T) {
               try {
+                console.log('尝试获取当前位置...');
                 const map = tiandituMapRef.current.getMap();
-                const localCity = new window.T.LocalCity();
-                localCity.location((result: any) => {
-                  if (result && result.lnglat) {
-                    // 定位到当前城市
-                    map.centerAndZoom(result.lnglat, 12);
-                    
-                    // 清除现有标记
-                    map.clearOverLays();
-                    
-                    // 添加定位标记
-                    const marker = new window.T.Marker(result.lnglat);
-                    map.addOverLay(marker);
-                    
-                    // 可选: 显示城市名称信息窗口
-                    if (result.cityName) {
+                
+                // 先尝试使用浏览器定位API
+                if (navigator.geolocation) {
+                  navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                      const lat = position.coords.latitude;
+                      const lng = position.coords.longitude;
+                      console.log('浏览器获取位置成功:', lng, lat);
+                      
+                      // 创建经纬度对象
+                      const lnglat = new window.T.LngLat(lng, lat);
+                      
+                      // 定位到当前位置
+                      map.panTo(lnglat);
+                      map.setZoom(13);
+                      
+                      // 清除现有标记
+                      map.clearOverLays();
+                      
+                      // 添加定位标记
+                      const marker = new window.T.Marker(lnglat);
+                      map.addOverLay(marker);
+                      
+                      // 显示信息窗口
                       const infoWindow = new window.T.InfoWindow(
-                        `<div style="padding: 5px;"><b>当前城市: ${result.cityName}</b></div>`
+                        `<div style="padding: 8px;">
+                          <b>您的位置</b><br>
+                          经度: ${lng.toFixed(6)}<br>
+                          纬度: ${lat.toFixed(6)}
+                        </div>`
                       );
                       marker.openInfoWindow(infoWindow);
+                    },
+                    (error) => {
+                      console.error('浏览器定位失败，尝试IP定位:', error);
+                      // 浏览器定位失败，尝试使用天地图的IP定位
+                      useIPLocation();
                     }
-                  }
-                });
+                  );
+                } else {
+                  console.log('浏览器不支持地理定位，使用IP定位');
+                  useIPLocation();
+                }
+                
+                // IP定位函数
+                function useIPLocation() {
+                  // 使用天地图IP定位
+                  // 修复TypeScript类型问题 - 为window.T创建本地变量实例
+                  let localCityInstance: any = null;
+                  
+                  const localCity = new window.T.LocalCity();
+                  localCityInstance = localCity;
+                  
+                  localCity.location((result: any) => {
+                    if (result && result.lnglat) {
+                      console.log('IP定位成功:', result);
+                      // 定位到当前城市
+                      map.centerAndZoom(result.lnglat, 12);
+                      
+                      // 清除现有标记
+                      map.clearOverLays();
+                      
+                      // 添加定位标记
+                      const marker = new window.T.Marker(result.lnglat);
+                      map.addOverLay(marker);
+                      
+                      // 显示城市名称信息窗口
+                      if (result.cityName) {
+                        const infoWindow = new window.T.InfoWindow(
+                          `<div style="padding: 8px;">
+                            <b>当前城市: ${result.cityName}</b><br>
+                            经度: ${result.lnglat.lng.toFixed(6)}<br>
+                            纬度: ${result.lnglat.lat.toFixed(6)}
+                          </div>`
+                        );
+                        marker.openInfoWindow(infoWindow);
+                      }
+                    } else {
+                      console.error('IP定位返回数据无效:', result);
+                      alert('无法获取您的位置，请稍后重试');
+                    }
+                  });
+                }
               } catch (err) {
                 console.error('定位功能错误:', err);
+                alert('定位服务出错，请稍后重试');
               }
             }
           }}
@@ -508,8 +714,21 @@ const MapContainer: React.FC<MapContainerProps> = ({
           onClose={handleCloseSidebar}
           layers={layers}
           onToggleLayer={handleLayerToggle}
+          onOpacityChange={handleOpacityChange}
         />
       )}
+      
+      {/* 区域信息对话框 */}
+      <RegionInfoDialog
+        feature={selectedRegion}
+        position={clickPosition}
+        onClose={() => {
+          setShowRegionInfo(false);
+          setSelectedRegion(null);
+          setClickPosition(null);
+        }}
+        visible={showRegionInfo}
+      />
     </div>
   );
 };

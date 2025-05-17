@@ -1,15 +1,17 @@
 import React, { useState } from 'react';
-import { X, Eye, EyeOff, ChevronRight, BarChart } from 'lucide-react';
+import { X, Eye, EyeOff, ChevronRight, BarChart, MapPin, Globe, Map } from 'lucide-react';
 import { LayerItem } from '../controls/LayerControl'; // 导入统一的LayerItem接口
 import { chinaCityHeatData, getShenzhenHeatData } from '../../data/heatmapData';
 import { chinaFullHeatData } from '../../data/chinaFullHeatData';
 import DataVisualization from '../visualizations/DataVisualization';
 import { HeatPoint } from '../../data/heatmapData';
+import OpacityControl from '../controls/OpacityControl';
 
 interface LayersSidebarProps {
   onClose: () => void;
   layers: LayerItem[];
   onToggleLayer: (layerId: string, visible: boolean) => void;
+  onOpacityChange?: (layerId: string, opacity: number) => void;
 }
 
 /**
@@ -19,7 +21,8 @@ interface LayersSidebarProps {
 const LayersSidebar: React.FC<LayersSidebarProps> = ({ 
   onClose, 
   layers,
-  onToggleLayer
+  onToggleLayer,
+  onOpacityChange
 }) => {
   // 当前选中的图层ID
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
@@ -35,6 +38,20 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
   const getSelectedLayerName = () => {
     if (!selectedLayerId) return '';
     return layers.find(l => l.id === selectedLayerId)?.name || '';
+  };
+
+  // 获取图层图标
+  const getLayerIcon = (layerId: string) => {
+    if (layerId.includes('heatmap')) {
+      return <BarChart size={18} color="#fb8c00" />;
+    } else if (layerId.includes('china')) {
+      return <Globe size={18} color="#1976d2" />;
+    } else if (layerId.includes('guangdong')) {
+      return <Map size={18} color="#43a047" />;
+    } else if (layerId.includes('shenzhen')) {
+      return <MapPin size={18} color="#e53935" />;
+    }
+    return <BarChart size={18} color="#1890ff" />;
   };
 
   const sidebarStyle: React.CSSProperties = {
@@ -118,7 +135,7 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
     ...layerItemStyle,
     backgroundColor: '#e6f7ff',
     borderLeft: '3px solid #1890ff',
-    paddingLeft: '7px'
+    padding: '12px 10px 12px 7px'
   };
 
   const layerNameStyle = (isVisible: boolean): React.CSSProperties => ({
@@ -134,9 +151,22 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
     padding: '0 15px 15px'
   };
   
+  const layerControlsStyle: React.CSSProperties = {
+    padding: '10px 15px',
+    backgroundColor: '#f9fafb',
+    borderBottom: '1px solid #eee'
+  };
+  
   // 处理图层点击事件
   const handleLayerClick = (layerId: string) => {
     setSelectedLayerId(layerId === selectedLayerId ? null : layerId);
+  };
+
+  // 处理透明度变化
+  const handleOpacityChange = (opacity: number) => {
+    if (selectedLayerId && onOpacityChange) {
+      onOpacityChange(selectedLayerId, opacity);
+    }
   };
 
   return (
@@ -160,7 +190,16 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
               <div style={{ marginBottom: '15px', fontSize: '12px', color: '#666' }}>
                 显示/隐藏图层 ({layers.filter(l => l.isVisible).length}/{layers.length})
               </div>
-              {layers.map((layer) => {
+              
+              {/* 图层类型分组标签 - 热力图 */}
+              {layers.some(layer => layer.id.includes('heatmap')) && (
+                <div style={{ padding: '10px 5px 5px 5px', fontSize: '13px', color: '#666', fontWeight: 'bold' }}>
+                  热力图图层
+                </div>
+              )}
+              
+              {/* 显示热力图图层 */}
+              {layers.filter(layer => layer.id.includes('heatmap')).map((layer) => {
                 // 判断使用哪种样式
                 let itemStyle = layerItemStyle;
                 if (layer.id === selectedLayerId) {
@@ -201,13 +240,68 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
                       {layer.name}
                     </div>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                      {layerDataMap[layer.id] && (
-                        <BarChart 
-                          size={16} 
-                          color="#1890ff" 
-                          style={{ opacity: selectedLayerId === layer.id ? 1 : 0.6 }}
-                        />
+                      {getLayerIcon(layer.id)}
+                      <ChevronRight 
+                        size={16} 
+                        color="#999" 
+                        style={{ 
+                          transform: selectedLayerId === layer.id ? 'rotate(90deg)' : 'none',
+                          transition: 'transform 0.2s'
+                        }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {/* 图层类型分组标签 - 行政区域 */}
+              {layers.some(layer => layer.id.includes('geojson')) && (
+                <div style={{ padding: '10px 5px 5px 5px', fontSize: '13px', color: '#666', fontWeight: 'bold' }}>
+                  行政区域图层
+                </div>
+              )}
+              
+              {/* 显示行政区域图层 */}
+              {layers.filter(layer => layer.id.includes('geojson')).map((layer) => {
+                // 判断使用哪种样式
+                let itemStyle = layerItemStyle;
+                if (layer.id === selectedLayerId) {
+                  itemStyle = selectedLayerStyle;
+                } else if (layer.isVisible) {
+                  itemStyle = activeLayerStyle;
+                }
+                
+                return (
+                  <div 
+                    key={layer.id} 
+                    style={itemStyle}
+                    onClick={(e) => {
+                      const target = e.target as HTMLElement;
+                      if (!target.closest('.eye-icon')) {
+                        handleLayerClick(layer.id);
+                      }
+                    }}
+                  >
+                    <div 
+                      className="eye-icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        layer.onToggle(!layer.isVisible);
+                        onToggleLayer(layer.id, !layer.isVisible);
+                      }}
+                      style={{ display: 'flex', alignItems: 'center' }}
+                    >
+                      {layer.isVisible ? (
+                        <Eye size={18} color="#1890ff" />
+                      ) : (
+                        <EyeOff size={18} color="#999" />
                       )}
+                    </div>
+                    <div style={layerNameStyle(layer.isVisible)}>
+                      {layer.name}
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      {getLayerIcon(layer.id)}
                       <ChevronRight 
                         size={16} 
                         color="#999" 
@@ -223,6 +317,17 @@ const LayersSidebar: React.FC<LayersSidebarProps> = ({
             </>
           )}
         </div>
+        
+        {/* 图层控制区域 - 只有在选择图层时显示 */}
+        {selectedLayerId && (
+          <div style={layerControlsStyle}>
+            <OpacityControl 
+              value={layers.find(l => l.id === selectedLayerId)?.opacity || 0.5}
+              onChange={handleOpacityChange}
+              label="透明度"
+            />
+          </div>
+        )}
         
         {/* 数据可视化区域 */}
         {selectedLayerId && layerDataMap[selectedLayerId] && (

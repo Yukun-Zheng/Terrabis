@@ -20,6 +20,19 @@ const nextConfig = {
       },
     ];
   },
+  // 配置静态资源目录 - 修改确保静态资源可访问
+  // 这样可以通过/data/访问public/data目录下的文件
+  // 包括GeoJSON文件
+  async rewrites() {
+    return [
+      {
+        source: '/data/:path*',
+        destination: '/data/:path*',
+      }
+    ];
+  },
+  // 确保生产环境也能访问静态资源
+  assetPrefix: process.env.NODE_ENV === 'production' ? '/' : undefined,
 };
 
 module.exports = nextConfig;
