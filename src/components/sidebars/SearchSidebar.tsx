@@ -611,7 +611,7 @@ export const SearchSidebar: React.FC<SearchSidebarProps> = ({
     setSearchTerm(term);
     searchLocation(term);
   };
-  
+
   return (
     <div style={sidebarStyle}>
       <div style={headerStyle}>
@@ -659,18 +659,18 @@ export const SearchSidebar: React.FC<SearchSidebarProps> = ({
           borderTop: '1px solid #eee'
         }}>
           <h4 style={{ margin: '10px', fontSize: '14px', color: '#666' }}>搜索结果</h4>
-          <ul style={resultsListStyle}>
+        <ul style={resultsListStyle}>
             {searchResults.map((result) => (
-              <li
-                key={result.id}
+            <li
+              key={result.id}
                 style={resultItemStyle}
-                onClick={() => handleResultClick(result)}
-              >
+              onClick={() => handleResultClick(result)}
+            >
                 <div style={{ fontWeight: 'bold' }}>{result.name}</div>
                 <div style={{ fontSize: '12px', color: '#666' }}>{result.address}</div>
-              </li>
-            ))}
-          </ul>
+            </li>
+          ))}
+        </ul>
         </div>
       )}
       

@@ -243,6 +243,49 @@ interface DrawingSidebarProps {
   mapRef?: React.RefObject<any>;
 }
 
+// 声明全局变量类型扩展，不使用const T
+declare global {
+  // 扩展Window接口
+  interface Window {
+    T: any; // 使用any类型简化，解决类型错误
+    TIANDITU_API_LOADED?: boolean;
+    TIANDITU_API_LOADING?: boolean;
+    onTiandituLoaded?: () => void;
+    _drawingState: {
+      lastCircleCenter: any;
+      lastCircleRadius: number;
+      lastRectangleBounds: any;
+      lastPolygonPoints: any;
+      processedEvents: Set<string>;
+    };
+    _mapClickRecorder: {
+      clicks: Array<{lng: number, lat: number}>;
+      active: boolean;
+      lastClickTime: number;
+    };
+    _polygonDrawer: {
+      points: Array<{lng: number, lat: number}>;
+      active: boolean;
+    };
+    _polygonPoints: Array<{lng: number, lat: number}>;
+  }
+}
+
+/**
+ * 安全的距离计算函数，不依赖天地图API的Tool.getDistance方法
+ */
+const calculateDistance = (point1: { lng: number, lat: number }, point2: { lng: number, lat: number }): number => {
+  // 使用Haversine公式计算两点之间的距离
+  const R = 6371000; // 地球半径，单位米
+  const dLat = (point2.lat - point1.lat) * Math.PI / 180;
+  const dLng = (point2.lng - point1.lng) * Math.PI / 180;
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(point1.lat * Math.PI / 180) * Math.cos(point2.lat * Math.PI / 180) *
+            Math.sin(dLng/2) * Math.sin(dLng/2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+};
+
 /**
  * 绘制侧边栏组件 - 合并ROI和表格功能
  */
@@ -254,12 +297,14 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'draw' | 'data'>('draw');
   const [shapes, setShapes] = useState<DrawingData[]>([]);
+  const [lastShapeId, setLastShapeId] = useState<string | null>(null);
   
   // 绘图工具引用
   const rectangleToolRef = useRef<any>(null);
   const circleToolRef = useRef<any>(null);
   const polygonToolRef = useRef<any>(null);
   const currentToolRef = useRef<any>(null);
+  const tempCircleRef = useRef<any>(null); // 用于存储临时圆形
   
   // 从localStorage加载保存的形状数据
   useEffect(() => {
@@ -447,8 +492,8 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
                         <p style="margin: 4px 0;">面积: ${formatNumber(shape.area)} m²</p>
                         <p style="margin: 4px 0;">周长: ${formatNumber(shape.perimeter)} m</p>
                         <p style="margin: 4px 0; font-weight: bold; color: #1890ff;">编号: ${index + 1}</p>
-                        ${shape.startPoint ? `<p style="margin: 4px 0; font-size: 12px;">起点: ${formatCoordinate(shape.startPoint![0])}, ${formatCoordinate(shape.startPoint![1])}</p>` : ''}
-                        ${shape.endPoint ? `<p style="margin: 4px 0; font-size: 12px;">终点: ${formatCoordinate(shape.endPoint![0])}, ${formatCoordinate(shape.endPoint![1])}</p>` : ''}
+                        ${shape.startPoint ? `<p style="margin: 4px 0; font-size: 12px;">起点: ${formatCoordinate(shape.startPoint[0])}, ${formatCoordinate(shape.startPoint[1])}</p>` : ''}
+                        ${shape.endPoint ? `<p style="margin: 4px 0; font-size: 12px;">终点: ${formatCoordinate(shape.endPoint[0])}, ${formatCoordinate(shape.endPoint[1])}</p>` : ''}
                         <p style="margin: 4px 0; font-size: 11px; color: #888;">点数: ${shape.points ? shape.points.length : 0}</p>
                       </div>
                     `);
@@ -470,6 +515,160 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       console.error('加载保存的形状数据失败:', err);
     }
   }, [mapRef]);
+  
+  // 处理圆形绘制完成事件 - 重写以正确获取圆心和半径
+  const handleCircleToolDraw = (e: any) => {
+    console.log('圆形绘制事件触发', e);
+    
+    // 防止重复处理
+    if (window._drawingState && window._drawingState.processedEvents) {
+      const eventSignature = `circle-${Date.now()}`;
+      if (window._drawingState.processedEvents.has(eventSignature)) return;
+      window._drawingState.processedEvents.add(eventSignature);
+      setTimeout(() => window._drawingState.processedEvents.delete(eventSignature), 1000);
+    }
+    
+    try {
+      // 从事件中获取圆形覆盖物
+      const circle = e.overlay || e.target || e;
+      if (!circle) {
+        console.error('无法获取圆形覆盖物');
+        return;
+      }
+      
+      // 获取圆心和半径 - 尝试多种方法
+      let center = null;
+      let radius = 0;
+      
+      // 方法1: 使用对象方法获取
+      if (typeof circle.getCenter === 'function' && typeof circle.getRadius === 'function') {
+        try {
+          center = circle.getCenter();
+          radius = circle.getRadius();
+          console.log('方法1: 使用getCenter和getRadius方法获取成功', {center, radius});
+        } catch (err) {
+          console.error('使用getCenter/getRadius方法获取失败:', err);
+        }
+      }
+      
+      // 方法2: 访问对象属性
+      if (!center && circle.center) {
+        center = circle.center;
+        console.log('方法2: 从center属性获取成功');
+      }
+      
+      if (radius === 0 && typeof circle.radius === 'number') {
+        radius = circle.radius;
+        console.log('方法2: 从radius属性获取成功:', radius);
+      }
+      
+      // 方法3: 从overlay属性获取
+      if ((!center || radius === 0) && e.overlay) {
+        if (e.overlay.center) {
+          center = e.overlay.center;
+          console.log('方法3: 从e.overlay.center获取成功');
+        }
+        
+        if (typeof e.overlay.radius === 'number') {
+          radius = e.overlay.radius;
+          console.log('方法3: 从e.overlay.radius获取成功:', radius);
+        }
+      }
+      
+      // 方法4: 如果存在latlng属性，将其作为中心点
+      if (!center && e.latlng) {
+        center = e.latlng;
+        console.log('方法4: 使用e.latlng作为圆心');
+      }
+      
+      // 方法5: 从全局状态中获取最后记录的圆心和半径
+      if ((!center || radius === 0) && window._drawingState) {
+        if (!center && window._drawingState.lastCircleCenter) {
+          center = window._drawingState.lastCircleCenter;
+          console.log('方法5: 从全局状态获取圆心');
+        }
+        
+        if (radius === 0 && window._drawingState.lastCircleRadius > 0) {
+          radius = window._drawingState.lastCircleRadius;
+          console.log('方法5: 从全局状态获取半径:', radius);
+        }
+      }
+      
+      // 方法6: 如果有记录的点击位置，使用第一个点作为圆心
+      if (!center && window._mapClickRecorder && window._mapClickRecorder.clicks.length > 0) {
+        const firstClick = window._mapClickRecorder.clicks[0];
+        center = new window.T.LngLat(firstClick.lng, firstClick.lat);
+        console.log('方法6: 使用记录的点击位置作为圆心');
+      }
+      
+      // 方法7: 如果地图上有鼠标最后位置，使用为圆心
+      if (!center && mapRef?.current) {
+        const map = mapRef.current.getMap();
+        if (map && map._lastMousePosition) {
+          center = new window.T.LngLat(map._lastMousePosition.lng, map._lastMousePosition.lat);
+          console.log('方法7: 使用地图上鼠标最后位置作为圆心');
+        }
+      }
+      
+      // 如果仍然没有获取到中心点或半径，使用地图中心作为圆心和默认半径
+      if (!center || radius === 0) {
+        if (!center && mapRef?.current) {
+          const map = mapRef.current.getMap();
+          if (map && typeof map.getCenter === 'function') {
+            center = map.getCenter();
+            console.log('未能获取圆心，使用地图中心代替');
+          }
+        }
+        
+        if (radius === 0) {
+          // 使用默认半径 (1000米)
+          radius = 1000;
+          console.log('未能获取半径，使用默认值:', radius);
+        }
+      }
+      
+      // 确保获取到了圆心和半径
+      if (!center) {
+        console.error('无法获取有效的圆心');
+        return;
+      }
+      
+      // 提取中心点坐标
+      let centerLng, centerLat;
+      
+      if (typeof center.lng === 'function' && typeof center.lat === 'function') {
+        centerLng = center.lng();
+        centerLat = center.lat();
+      } else {
+        centerLng = center.lng;
+        centerLat = center.lat;
+      }
+      
+      // 输出获取到的数据
+      console.log('圆形数据:', {
+        center: { lng: centerLng, lat: centerLat },
+        radius: radius
+      });
+      
+      // 创建点数组，只包含中心点
+      const points = [[centerLng, centerLat]];
+      
+      // 计算圆的周长和面积
+      const perimeter = 2 * Math.PI * radius;
+      const area = Math.PI * radius * radius;
+      
+      // 保存数据到全局状态
+      if (window._drawingState) {
+        window._drawingState.lastCircleCenter = center;
+        window._drawingState.lastCircleRadius = radius;
+      }
+      
+      // 添加新形状
+      addNewShape('circle', area, perimeter, points);
+    } catch (err) {
+      console.error('处理圆形绘制时出错:', err);
+    }
+  };
   
   // 初始化天地图绘图工具
   useEffect(() => {
@@ -495,99 +694,300 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       circleToolRef.current = new window.T.CircleTool(map, toolConfig);
       polygonToolRef.current = new window.T.PolygonTool(map, toolConfig);
       
-      // 添加事件监听器 - 矩形工具
-      rectangleToolRef.current.on('draw', (e: any) => {
-        if (!e.overlay) return;
-        
-        // 获取绘制的矩形边界
-        const bounds = e.overlay.getBounds();
-        if (!bounds) return;
-        
-        const sw = bounds.getSouthWest();
-        const ne = bounds.getNorthEast();
-        
-        // 矩形四角坐标
-        const points = [
-          [sw.lng, sw.lat],
-          [ne.lng, sw.lat],
-          [ne.lng, ne.lat],
-          [sw.lng, ne.lat],
-          [sw.lng, sw.lat]
-        ];
-        
-        // 计算矩形面积和周长
-        const width = window.T.Tool.getDistance(
-          new window.T.LngLat(sw.lng, sw.lat),
-          new window.T.LngLat(ne.lng, sw.lat)
-        );
-        const height = window.T.Tool.getDistance(
-          new window.T.LngLat(sw.lng, sw.lat),
-          new window.T.LngLat(sw.lng, ne.lat)
-        );
-        
-        const area = width * height;
-        const perimeter = 2 * (width + height);
-        
-        // 创建新的形状数据
-        addNewShape('rectangle', area, perimeter, points);
-      });
+      // 添加矩形工具事件监听 - 使用多种方式确保事件能被捕获
+      if (rectangleToolRef.current) {
+        try {
+          // 方法1: 使用on方法
+          rectangleToolRef.current.on('draw', handleRectangleDrawEnd);
+          console.log('矩形绘制工具使用on方法初始化完成');
+        } catch (err) {
+          console.error('使用on方法注册矩形绘制事件失败:', err);
+          
+          // 方法2: 使用addEventListener方法
+          try {
+            if (typeof rectangleToolRef.current.addEventListener === 'function') {
+              rectangleToolRef.current.addEventListener('draw', handleRectangleDrawEnd);
+              console.log('矩形绘制工具使用addEventListener方法初始化完成');
+            }
+          } catch (err2) {
+            console.error('使用addEventListener方法注册矩形绘制事件也失败:', err2);
+          }
+        }
+      }
       
-      // 添加事件监听器 - 圆形工具
-      circleToolRef.current.on('draw', (e: any) => {
-        if (!e.overlay) return;
-        
-        // 获取圆形半径和中心点
-        const radius = e.overlay.getRadius();
-        const center = e.overlay.getCenter();
-        
-        // 计算圆形面积和周长
-        const area = Math.PI * radius * radius;
-        const perimeter = 2 * Math.PI * radius;
-        
-        // 创建新的形状数据
-        addNewShape('circle', area, perimeter, [[center.lng, center.lat]]);
-      });
-      
-      // 添加事件监听器 - 多边形工具
-      polygonToolRef.current.on('draw', (e: any) => {
-        if (!e.overlay) return;
-        
-        // 获取多边形路径
-        const path = e.overlay.getLngLats();
-        if (!path || !path.length) return;
-        
-        // 转换点坐标
-        const points = path.map((lnglat: any) => [lnglat.lng, lnglat.lat]);
-        
-        // 计算面积
-        let area = 0;
-        if (window.T.Tool && window.T.Tool.getPolygonArea) {
-          area = window.T.Tool.getPolygonArea(path);
+      // 添加圆形工具事件监听 - 使用多种方式确保事件能被捕获
+      if (circleToolRef.current) {
+        try {
+          // 方法1: 使用on方法
+          circleToolRef.current.on('draw', handleCircleToolDraw);
+          console.log('圆形绘制工具使用on方法初始化完成');
+        } catch (err) {
+          console.error('使用on方法注册圆形绘制事件失败:', err);
+          
+          // 方法2: 使用addEventListener方法
+          try {
+            if (typeof circleToolRef.current.addEventListener === 'function') {
+              circleToolRef.current.addEventListener('draw', handleCircleToolDraw);
+              console.log('圆形绘制工具使用addEventListener方法初始化完成');
+            }
+          } catch (err2) {
+            console.error('使用addEventListener方法注册圆形绘制事件也失败:', err2);
+          }
         }
         
-        // 计算周长
-        let perimeter = 0;
-        for (let i = 0; i < path.length; i++) {
-          const p1 = path[i];
-          const p2 = path[(i + 1) % path.length];
-          perimeter += window.T.Tool.getDistance(p1, p2);
+        // 方法3: 额外监听地图上的圆形覆盖物添加事件
+        try {
+          map.addEventListener('addoverlay', (e: any) => {
+            if (e.overlay && 
+               ((typeof e.overlay.getRadius === 'function') || 
+               (e.overlay.CLASS_NAME && e.overlay.CLASS_NAME.indexOf('Circle') > -1))) {
+              console.log('检测到圆形覆盖物添加到地图', e);
+              handleCircleToolDraw(e);
+            }
+          });
+          console.log('添加了地图圆形覆盖物监听');
+        } catch (err) {
+          console.error('注册地图覆盖物事件失败:', err);
+        }
+      }
+      
+      // 添加多边形工具事件监听 - 使用多种方式确保事件能被捕获
+      if (polygonToolRef.current) {
+        try {
+          // 方法1: 使用on方法
+          polygonToolRef.current.on('draw', handlePolygonDrawEnd);
+          console.log('多边形绘制工具使用on方法初始化完成');
+        } catch (err) {
+          console.error('使用on方法注册多边形绘制事件失败:', err);
+          
+          // 方法2: 使用addEventListener方法
+          try {
+            if (typeof polygonToolRef.current.addEventListener === 'function') {
+              polygonToolRef.current.addEventListener('draw', handlePolygonDrawEnd);
+              console.log('多边形绘制工具使用addEventListener方法初始化完成');
+            }
+          } catch (err2) {
+            console.error('使用addEventListener方法注册多边形绘制事件也失败:', err2);
+          }
         }
         
-        // 创建新的形状数据
-        addNewShape('polygon', area, perimeter, points);
-      });
+        // 方法3: 额外监听地图上的多边形覆盖物添加事件
+        try {
+          map.addEventListener('addoverlay', (e: any) => {
+            if (e.overlay && 
+               ((typeof e.overlay.getPath === 'function') || 
+               (e.overlay.CLASS_NAME && e.overlay.CLASS_NAME.indexOf('Polygon') > -1))) {
+              console.log('检测到多边形覆盖物添加到地图', e);
+              handlePolygonDrawEnd(e);
+            }
+          });
+          console.log('添加了地图多边形覆盖物监听');
+        } catch (err) {
+          console.error('注册地图覆盖物事件失败:', err);
+        }
+      }
       
+      // 初始化全局绘图状态
+      window._drawingState = {
+        lastCircleCenter: null,
+        lastCircleRadius: 0,
+        lastRectangleBounds: null,
+        lastPolygonPoints: null,
+        processedEvents: new Set() // 用于防止事件重复处理
+      };
+      
+      console.log('绘图工具初始化完成');
+      
+      // 添加清理函数
       return () => {
-        // 清理函数
-        closeAllTools();
+        // 清理事件监听器和工具
+        try {
+          if (rectangleToolRef.current) {
+            rectangleToolRef.current.close();
+          }
+          if (circleToolRef.current) {
+            circleToolRef.current.close();
+          }
+          if (polygonToolRef.current) {
+            polygonToolRef.current.close();
+          }
+        } catch (err) {
+          console.error('清理绘图工具失败:', err);
+        }
       };
     } catch (err) {
       console.error('初始化绘图工具失败:', err);
     }
   }, [mapRef]);
   
+  // 在useEffect中添加地图点击记录功能
+  useEffect(() => {
+    // 确保天地图API和地图实例都已加载
+    if (!window.T || !mapRef?.current) return;
+    
+    try {
+      const map = mapRef.current.getMap();
+      if (!map) return;
+      
+      // 初始化点击记录器
+      if (!window._mapClickRecorder) {
+        window._mapClickRecorder = {
+          clicks: [],
+          active: false,
+          lastClickTime: 0
+        };
+      }
+      
+      // 添加点击监听器
+      const clickHandler = function(e: any) {
+        if (!window._mapClickRecorder.active) return;
+        
+        const now = Date.now();
+        // 防抖，忽略300ms内的连续点击
+        if (now - window._mapClickRecorder.lastClickTime < 300) return;
+        window._mapClickRecorder.lastClickTime = now;
+        
+        const latlng = e.latlng;
+        if (!latlng) return;
+        
+        const point = {
+          lng: typeof latlng.lng === 'function' ? latlng.lng() : latlng.lng,
+          lat: typeof latlng.lat === 'function' ? latlng.lat() : latlng.lat
+        };
+        
+        window._mapClickRecorder.clicks.push(point);
+        console.log('记录点击位置:', point, '当前共有', window._mapClickRecorder.clicks.length, '个点');
+      };
+      
+      // 添加点击监听器
+      map.addEventListener('click', clickHandler);
+      
+        // 清理函数
+      return () => {
+        try {
+          map.removeEventListener('click', clickHandler);
+        } catch (err) {
+          console.error('移除点击监听器失败:', err);
+        }
+      };
+    } catch (err) {
+      console.error('添加地图点击记录器失败:', err);
+    }
+  }, [mapRef]);
+  
+  // 处理工具选择
+  const handleToolSelect = (toolId: string) => {
+    // 如果选择当前激活的工具，则取消选择
+    if (activeTool === toolId) {
+      setActiveTool(null);
+      closeAllTools();
+      
+      // 停用点击记录
+      if (window._mapClickRecorder) {
+        window._mapClickRecorder.active = false;
+      }
+      
+      return;
+    }
+    
+    // 设置激活工具
+    setActiveTool(toolId);
+    
+    // 首先关闭所有工具
+    closeAllTools();
+    
+    try {
+      // 激活选择的工具
+      switch (toolId) {
+        case 'rectangle':
+          if (rectangleToolRef.current) {
+            rectangleToolRef.current.open();
+            currentToolRef.current = rectangleToolRef.current;
+            console.log('矩形绘制工具已激活');
+          }
+          
+          // 停用点击记录
+          if (window._mapClickRecorder) {
+            window._mapClickRecorder.active = false;
+            window._mapClickRecorder.clicks = [];
+          }
+          
+          // 显示提示
+          showDrawingNotification('矩形绘制模式已激活，点击地图并拖动创建矩形');
+          break;
+          
+        case 'circle':
+          if (circleToolRef.current) {
+            circleToolRef.current.open();
+            currentToolRef.current = circleToolRef.current;
+            console.log('圆形绘制工具已激活');
+          }
+          
+          // 停用点击记录
+          if (window._mapClickRecorder) {
+            window._mapClickRecorder.active = false;
+            window._mapClickRecorder.clicks = [];
+          }
+          
+          // 显示提示
+          showDrawingNotification('圆形绘制模式已激活，点击地图选择圆心，拖动确定半径');
+          break;
+          
+        case 'polygon':
+          if (polygonToolRef.current) {
+            polygonToolRef.current.open();
+            currentToolRef.current = polygonToolRef.current;
+            console.log('多边形绘制工具已激活');
+          }
+          
+          // 激活点击记录
+          if (window._mapClickRecorder) {
+            window._mapClickRecorder.active = true;
+            window._mapClickRecorder.clicks = [];
+          }
+          
+          // 显示提示
+          showDrawingNotification('多边形绘制模式已激活，点击地图添加点，双击完成绘制');
+          break;
+      }
+    } catch (err) {
+      console.error('设置绘图工具失败:', err);
+    }
+  };
+  
+  // 显示绘制提示通知
+  const showDrawingNotification = (message: string) => {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 128, 255, 0.9);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 4px;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      notification.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => {
+        try {
+          document.body.removeChild(notification);
+        } catch (e) {}
+      }, 300);
+    }, 5000);
+  };
+  
   // 添加新形状数据
   const addNewShape = (type: string, area: number, perimeter: number, points: number[][]) => {
+    console.log('添加新形状:', { type, area, perimeter, points });
+    
     // 获取当前编号
     const shapeNumber = shapes.length + 1;
     
@@ -609,7 +1009,7 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
     
     // 创建新的绘制数据
     const newShape: DrawingData = {
-      id: `shape-${Date.now()}`,
+      id: `shape-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       name: `${getShapeTypeName(type)}-${shapeNumber}`,
       type,
       area,
@@ -620,22 +1020,47 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       createdAt: new Date()
     };
     
-    // 添加到数据列表
+    console.log('新创建的形状对象:', newShape);
+    
+    // 添加到数据列表 - 使用函数式更新保证基于最新状态
     setShapes(prev => {
       const updatedShapes = [...prev, newShape];
       
       // 将形状数据保存到localStorage
       try {
         localStorage.setItem('tianditu-shapes', JSON.stringify(updatedShapes));
+        console.log('形状数据已保存到localStorage，当前数量:', updatedShapes.length);
+        // 诊断输出：确认保存的数据结构
+        console.log('localStorage中的形状数量:', {count: updatedShapes.length});
+        
+        // 将形状对象的详细信息输出到控制台以便调试
+        console.log('保存到localStorage的形状:', 
+          updatedShapes.map(s => ({
+            id: s.id,
+            type: s.type,
+            area: s.area,
+            perimeter: s.perimeter,
+            points: s.points ? s.points.length : 0
+          }))
+        );
       } catch (err) {
         console.error('保存绘制数据失败:', err);
       }
       
+      // 诊断输出：确认React状态更新
+      console.log('当前React状态中的形状数量:', {count: updatedShapes.length});
+      
       return updatedShapes;
     });
     
+    // 记录最新添加的形状ID，用于高亮显示
+    setLastShapeId(newShape.id);
+    
     // 绘制完成后切换到数据选项卡
     setActiveTab('data');
+    
+    // 显示成功提示
+    showDrawingNotification(`${getShapeTypeName(type)}绘制成功！面积: ${formatNumber(area)}m²，周长: ${formatNumber(perimeter)}m`);
     
     // 在图形上标记编号
     if (mapRef?.current) {
@@ -790,6 +1215,8 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
               }
             );
             map.addOverLay(rectangle);
+            
+            console.log('矩形已添加到地图', rectangle);
           } else if (type === 'circle' && points.length > 0) {
             // 为圆形计算半径（在创建圆形时已经计算了半径，这里直接用周长计算）
             const radius = perimeter / (2 * Math.PI);
@@ -807,6 +1234,12 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
               }
             );
             map.addOverLay(circle);
+            
+            console.log('圆形已添加到地图', {
+              center: points[0],
+              radius: radius,
+              circle: circle
+            });
           } else if (type === 'polygon' && points.length > 0) {
             // 创建多边形点数组
             const lngLats = points.map(point => new window.T.LngLat(point[0], point[1]));
@@ -817,9 +1250,15 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
               weight: 2,
               opacity: 0.8,
               fillColor: "#1890ff",
-              fillOpacity: 0.3
+              fillOpacity: 0.3,
+              lineStyle: "solid"
             });
             map.addOverLay(polygon);
+            
+            console.log('多边形已添加到地图', {
+              points: points.length,
+              polygon: polygon
+            });
           }
         } catch (err) {
           console.error('创建图形标记失败:', err);
@@ -830,6 +1269,425 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
     // 重置绘图工具
     setActiveTool(null);
     closeAllTools();
+  };
+  
+  // 处理矩形绘制完成事件 - 按照天地图API示例重构
+  const handleRectangleDrawEnd = (e: any) => {
+    console.log('矩形绘制事件触发', e);
+    
+    // 防止重复处理
+    if (window._drawingState && window._drawingState.processedEvents) {
+      const eventSignature = `rectangle-${Date.now()}`;
+      if (window._drawingState.processedEvents.has(eventSignature)) return;
+      window._drawingState.processedEvents.add(eventSignature);
+      setTimeout(() => window._drawingState.processedEvents.delete(eventSignature), 1000);
+    }
+    
+    try {
+      // 从事件中获取矩形覆盖物
+      const rectangle = e.overlay || e.target || e;
+      if (!rectangle) {
+        console.error('无法获取矩形覆盖物');
+        return;
+      }
+      
+      // 获取矩形的边界 - 尝试多种方法
+      let bounds = null;
+      
+      // 方法1: 使用getBounds方法获取边界
+      if (typeof rectangle.getBounds === 'function') {
+        try {
+          bounds = rectangle.getBounds();
+          console.log('方法1: 使用getBounds方法获取成功');
+        } catch (err) {
+          console.error('使用getBounds方法获取失败:', err);
+        }
+      }
+      
+      // 方法2: 直接访问bounds属性
+      if (!bounds && rectangle.bounds) {
+        bounds = rectangle.bounds;
+        console.log('方法2: 从bounds属性获取成功');
+      }
+      
+      // 方法3: 从overlay中获取
+      if (!bounds && e.overlay && e.overlay.bounds) {
+        bounds = e.overlay.bounds;
+        console.log('方法3: 从e.overlay.bounds属性获取成功');
+      }
+      
+      // 方法4: 尝试获取矩形的四个角点
+      let sw, ne;
+      if (!bounds) {
+        if (rectangle.getPoints && typeof rectangle.getPoints === 'function') {
+          try {
+            const points = rectangle.getPoints();
+            if (points && points.length >= 2) {
+              // 假设points数组包含矩形的对角点
+              sw = points[0];
+              ne = points[1];
+              console.log('方法4: 从getPoints方法获取成功');
+            }
+          } catch (err) {
+            console.error('使用getPoints方法获取失败:', err);
+          }
+        }
+      }
+      
+      // 方法5: 从全局状态获取最后记录的边界
+      if (!bounds && !sw && !ne && window._drawingState && window._drawingState.lastRectangleBounds) {
+        const lastBounds = window._drawingState.lastRectangleBounds;
+        sw = lastBounds.sw;
+        ne = lastBounds.ne;
+        console.log('方法5: 从全局状态获取成功');
+      }
+      
+      // 从边界获取西南和东北角点
+      if (bounds && !sw && !ne) {
+        if (typeof bounds.getSouthWest === 'function' && typeof bounds.getNorthEast === 'function') {
+          sw = bounds.getSouthWest();
+          ne = bounds.getNorthEast();
+        } else if (bounds.sw && bounds.ne) {
+          sw = bounds.sw;
+          ne = bounds.ne;
+        } else if (bounds._southWest && bounds._northEast) {
+          sw = bounds._southWest;
+          ne = bounds._northEast;
+        }
+      }
+      
+      // 如果无法获取角点，创建默认矩形
+      if (!sw || !ne) {
+        console.error('无法获取矩形角点，将尝试创建默认矩形');
+        
+        // 获取地图中心
+        if (mapRef?.current) {
+          const map = mapRef.current.getMap();
+          if (map && typeof map.getCenter === 'function') {
+            const center = map.getCenter();
+            const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
+            const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+            
+            // 创建一个以地图中心为中心的矩形，大小约为500米
+            const offset = 0.005; // 经纬度偏移约500米
+            sw = new window.T.LngLat(centerLng - offset, centerLat - offset);
+            ne = new window.T.LngLat(centerLng + offset, centerLat + offset);
+            console.log('已创建默认矩形');
+          }
+        }
+        
+        if (!sw || !ne) {
+          console.error('无法创建默认矩形');
+          return;
+        }
+      }
+      
+      // 提取经纬度值
+      let swLng, swLat, neLng, neLat;
+      
+      if (typeof sw.lng === 'function' && typeof sw.lat === 'function') {
+        swLng = sw.lng();
+        swLat = sw.lat();
+      } else {
+        swLng = sw.lng;
+        swLat = sw.lat;
+      }
+      
+      if (typeof ne.lng === 'function' && typeof ne.lat === 'function') {
+        neLng = ne.lng();
+        neLat = ne.lat();
+      } else {
+        neLng = ne.lng;
+        neLat = ne.lat;
+      }
+      
+      // 记录调试信息
+      console.log('矩形角点:', {
+        sw: { lng: swLng, lat: swLat },
+        ne: { lng: neLng, lat: neLat }
+      });
+      
+      // 构建矩形的点数组
+      const points = [
+        [swLng, swLat],   // 左下
+        [neLng, swLat],   // 右下
+        [neLng, neLat],   // 右上
+        [swLng, neLat],   // 左上
+        [swLng, swLat]    // 回到左下(闭合)
+      ];
+      
+      // 计算矩形的宽度和高度（以米为单位）
+      const swPoint = {lng: swLng, lat: swLat};
+      const sePoint = {lng: neLng, lat: swLat};
+      const nwPoint = {lng: swLng, lat: neLat};
+      
+      const width = calculateDistance(swPoint, sePoint);
+      const height = calculateDistance(swPoint, nwPoint);
+      
+      // 计算面积和周长
+      const area = width * height;
+      const perimeter = 2 * (width + height);
+      
+      console.log('矩形数据:', {
+        points,
+        width: width.toFixed(2) + 'm',
+        height: height.toFixed(2) + 'm',
+        area: area.toFixed(2) + 'm²',
+        perimeter: perimeter.toFixed(2) + 'm'
+      });
+      
+      // 保存数据到全局状态
+      if (window._drawingState) {
+        window._drawingState.lastRectangleBounds = { sw, ne };
+      }
+      
+      // 添加新形状
+      addNewShape('rectangle', area, perimeter, points);
+    } catch (err) {
+      console.error('处理矩形绘制时出错:', err);
+    }
+  };
+  
+  // 处理多边形绘制完成事件 - 按照天地图API示例重构
+  const handlePolygonDrawEnd = (e: any) => {
+    console.log('多边形绘制事件触发', e);
+    
+    // 防止重复处理
+    if (window._drawingState && window._drawingState.processedEvents) {
+      const eventSignature = `polygon-${Date.now()}`;
+      if (window._drawingState.processedEvents.has(eventSignature)) return;
+      window._drawingState.processedEvents.add(eventSignature);
+      setTimeout(() => window._drawingState.processedEvents.delete(eventSignature), 1000);
+    }
+    
+    try {
+      // 从事件中获取多边形覆盖物
+      const polygon = e.overlay || e.target || e;
+      if (!polygon) {
+        console.error('无法获取多边形覆盖物');
+        return;
+      }
+      
+      // 尝试获取多边形的路径点 - 尝试多种方法
+      let path = null;
+      
+      // 方法1: 使用getPath方法获取路径
+      if (typeof polygon.getPath === 'function') {
+        try {
+          path = polygon.getPath();
+          console.log('方法1: 使用getPath方法获取成功');
+        } catch (err) {
+          console.error('使用getPath方法获取失败:', err);
+        }
+      }
+      
+      // 方法2: 使用getLngLats方法
+      if (!path && typeof polygon.getLngLats === 'function') {
+        try {
+          path = polygon.getLngLats();
+          console.log('方法2: 使用getLngLats方法获取成功');
+        } catch (err) {
+          console.error('使用getLngLats方法获取失败:', err);
+        }
+      }
+      
+      // 方法3: 直接访问属性
+      if (!path) {
+        if (polygon.path) {
+          path = polygon.path;
+          console.log('方法3: 从path属性获取成功');
+        } else if (polygon.points) {
+          path = polygon.points;
+          console.log('方法3: 从points属性获取成功');
+        } else if (polygon.latlngs) {
+          path = polygon.latlngs;
+          console.log('方法3: 从latlngs属性获取成功');
+        }
+      }
+      
+      // 方法4: 从overlay属性获取
+      if (!path && e.overlay) {
+        if (e.overlay.path) {
+          path = e.overlay.path;
+          console.log('方法4: 从e.overlay.path获取成功');
+        } else if (e.overlay.points) {
+          path = e.overlay.points;
+          console.log('方法4: 从e.overlay.points获取成功');
+        } else if (e.overlay.latlngs) {
+          path = e.overlay.latlngs;
+          console.log('方法4: 从e.overlay.latlngs获取成功');
+        }
+      }
+      
+      // 方法5: 使用记录的点击位置作为路径点
+      if ((!path || !Array.isArray(path) || path.length < 3) && 
+          window._mapClickRecorder && 
+          window._mapClickRecorder.clicks && 
+          window._mapClickRecorder.clicks.length >= 3) {
+        path = window._mapClickRecorder.clicks;
+        console.log('方法5: 使用记录的点击位置作为路径点');
+      }
+      
+      // 方法6: 从全局状态获取最后记录的多边形点
+      if ((!path || !Array.isArray(path) || path.length < 3) && 
+          window._drawingState && 
+          window._drawingState.lastPolygonPoints && 
+          window._drawingState.lastPolygonPoints.length >= 3) {
+        path = window._drawingState.lastPolygonPoints;
+        console.log('方法6: 从全局状态获取成功');
+      }
+      
+      if (!path || !Array.isArray(path) || path.length < 3) {
+        console.error('无法获取有效的多边形路径点');
+        
+        // 方法7: 创建默认三角形
+        if (mapRef?.current) {
+          const map = mapRef.current.getMap();
+          if (map && typeof map.getCenter === 'function') {
+            const center = map.getCenter();
+            const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
+            const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+            
+            // 创建一个以地图中心为中心的三角形
+            const offset = 0.005; // 经纬度偏移约500米
+            path = [
+              {lng: centerLng, lat: centerLat + offset},
+              {lng: centerLng - offset, lat: centerLat - offset},
+              {lng: centerLng + offset, lat: centerLat - offset}
+            ];
+            console.log('已创建默认三角形');
+          }
+        }
+        
+        if (!path || path.length < 3) {
+          console.error('无法创建默认多边形');
+          return;
+        }
+      }
+      
+      // 转换路径点为标准格式
+      const points = path.map((point: any) => {
+        if (point && typeof point === 'object') {
+          if ('lng' in point && 'lat' in point) {
+            // 处理{lng, lat}格式
+            const lng = typeof point.lng === 'function' ? point.lng() : point.lng;
+            const lat = typeof point.lat === 'function' ? point.lat() : point.lat;
+            return [lng, lat];
+          } else if (typeof point.getLng === 'function' && typeof point.getLat === 'function') {
+            // 处理LngLat对象
+            return [point.getLng(), point.getLat()];
+          } else if (Array.isArray(point) && point.length >= 2) {
+            // 处理[lng, lat]数组
+            return [point[0], point[1]];
+          }
+        }
+        console.warn('无法解析点格式:', point);
+        return null;
+      }).filter((p): p is number[] => p !== null);
+      
+      // 确保多边形闭合
+      if (points.length > 0 && 
+          (points[0][0] !== points[points.length - 1][0] || 
+           points[0][1] !== points[points.length - 1][1])) {
+        points.push([points[0][0], points[0][1]]);
+      }
+      
+      if (points.length < 4) { // 至少需要3个点加1个闭合点
+        console.error('有效点数不足以形成多边形');
+        return;
+      }
+      
+      // 计算面积
+      const area = calculatePolygonArea(points);
+      
+      // 计算周长
+      let perimeter = 0;
+      for (let i = 0; i < points.length - 1; i++) {
+        perimeter += calculateDistance(
+          {lng: points[i][0], lat: points[i][1]},
+          {lng: points[i+1][0], lat: points[i+1][1]}
+        );
+      }
+      
+      console.log('多边形数据:', {
+        points: points.length,
+        coordinates: points,
+        area: area.toFixed(2) + 'm²',
+        perimeter: perimeter.toFixed(2) + 'm'
+      });
+      
+      // 保存数据到全局状态
+      if (window._drawingState) {
+        window._drawingState.lastPolygonPoints = points;
+      }
+      
+      // 添加新形状
+      addNewShape('polygon', area, perimeter, points);
+    } catch (err) {
+      console.error('处理多边形绘制时出错:', err);
+    }
+  };
+  
+  // 辅助函数：计算多边形面积（平面坐标系近似值）
+  const calculatePolygonArea = (points: number[][]) => {
+    let area = 0;
+    // 使用叉乘法计算多边形面积
+    for (let i = 0; i < points.length - 1; i++) {
+      area += points[i][0] * points[i+1][1] - points[i+1][0] * points[i][1];
+    }
+    // 取绝对值并除以2
+    area = Math.abs(area) / 2;
+    
+    // 将经纬度面积转换为平方米（近似计算）
+    // 经度1度在赤道约为111km，纬度1度恒为111km
+    // 由于经度间距随纬度变化，我们取多边形中心纬度来计算
+    const avgLat = points.reduce((sum: number, p: number[]) => sum + p[1], 0) / points.length;
+    const latFactor = 111000; // 纬度1度约为111000米
+    const lngFactor = 111000 * Math.cos(avgLat * Math.PI / 180); // 经度1度的米数
+    
+    return area * latFactor * lngFactor;
+  };
+  
+  // 交互式圆形绘制模式
+  const startCircleDrawMode = () => {
+    if (!mapRef?.current || !mapRef.current.getMap()) return;
+    
+    const map = mapRef.current.getMap();
+    
+    // 关闭当前工具并打开圆形工具
+    closeAllTools();
+    
+    if (circleToolRef.current) {
+      circleToolRef.current.open();
+      currentToolRef.current = circleToolRef.current;
+    }
+    
+    // 显示提示消息
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(0, 128, 255, 0.9);
+      color: white;
+      padding: 10px 16px;
+      border-radius: 4px;
+      z-index: 9999;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    `;
+    notification.textContent = '请点击地图选择圆心位置，然后拖动确定半径';
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+      notification.style.opacity = '0';
+      notification.style.transition = 'opacity 0.3s ease';
+      setTimeout(() => {
+        try {
+          document.body.removeChild(notification);
+        } catch (e) {}
+      }, 300);
+    }, 5000);
   };
   
   // 关闭所有绘图工具
@@ -847,48 +1705,6 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       case 'circle': return '圆形';
       case 'polygon': return '多边形';
       default: return type;
-    }
-  };
-  
-  // 处理工具选择
-  const handleToolSelect = (toolId: string) => {
-    // 如果选择当前激活的工具，则取消选择
-    if (activeTool === toolId) {
-      setActiveTool(null);
-      closeAllTools();
-      return;
-    }
-    
-    // 设置激活工具
-    setActiveTool(toolId);
-    
-    // 首先关闭所有工具
-    closeAllTools();
-    
-    try {
-      // 激活选择的工具
-      switch (toolId) {
-        case 'rectangle':
-          if (rectangleToolRef.current) {
-            rectangleToolRef.current.open();
-            currentToolRef.current = rectangleToolRef.current;
-          }
-          break;
-        case 'circle':
-          if (circleToolRef.current) {
-            circleToolRef.current.open();
-            currentToolRef.current = circleToolRef.current;
-          }
-          break;
-        case 'polygon':
-          if (polygonToolRef.current) {
-            polygonToolRef.current.open();
-            currentToolRef.current = polygonToolRef.current;
-          }
-          break;
-      }
-    } catch (err) {
-      console.error('设置绘图工具失败:', err);
     }
   };
   
@@ -962,7 +1778,64 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
   const formatCoordinate = (coordinate: number) => {
     return coordinate.toFixed(6);
   };
-  
+
+  // 重置所有数据
+  const handleResetAll = () => {
+    if (window.confirm('确定要重置所有数据吗？这将清除所有形状数据。')) {
+      // 清除localStorage
+      localStorage.removeItem('tianditu-shapes');
+      
+      // 清除状态
+      setShapes([]);
+      
+      // 清除地图上的所有覆盖物
+      if (mapRef?.current) {
+        const map = mapRef.current.getMap();
+        if (map && typeof map.clearOverLays === 'function') {
+          map.clearOverLays();
+        }
+      }
+      
+      console.log('所有数据已重置');
+    }
+  };
+
+  // 添加鼠标位置跟踪
+  useEffect(() => {
+    // 确保天地图API和地图实例都已加载
+    if (!window.T || !mapRef?.current) return;
+    
+    try {
+      const map = mapRef.current.getMap();
+      if (!map) return;
+      
+      // 添加鼠标移动监听器
+      const mouseMoveHandler = function(e: any) {
+        if (!e.latlng) return;
+        
+        // 保存最后的鼠标位置
+        map._lastMousePosition = {
+          lng: typeof e.latlng.lng === 'function' ? e.latlng.lng() : e.latlng.lng,
+          lat: typeof e.latlng.lat === 'function' ? e.latlng.lat() : e.latlng.lat
+        };
+      };
+      
+      // 添加监听器
+      map.addEventListener('mousemove', mouseMoveHandler);
+      
+      // 清理函数
+      return () => {
+        try {
+          map.removeEventListener('mousemove', mouseMoveHandler);
+        } catch (err) {
+          console.error('移除鼠标移动监听器失败:', err);
+        }
+      };
+    } catch (err) {
+      console.error('添加鼠标位置跟踪失败:', err);
+    }
+  }, [mapRef]);
+
   return (
     <div style={sidebarStyle}>
       <div style={headerStyle}>
@@ -1051,6 +1924,267 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
             }}>
               <p>还没有绘制数据</p>
               <p>请使用绘制工具在地图上创建形状</p>
+              <div style={{
+                marginTop: '16px',
+                padding: '10px',
+                backgroundColor: '#f6ffed',
+                border: '1px solid #b7eb8f',
+                borderRadius: '4px',
+                color: '#52c41a',
+                fontSize: '13px'
+              }}>
+                <p>诊断信息:</p>
+                <p>React状态中的形状: {shapes.length}</p>
+                <p>localStorage中的形状: {(() => {
+                  try {
+                    const saved = localStorage.getItem('tianditu-shapes');
+                    if (saved) {
+                      const parsed = JSON.parse(saved);
+                      return Array.isArray(parsed) ? parsed.length : '数据不是数组';
+                    }
+                    return '无数据';
+                  } catch (e) {
+                    return '读取错误';
+                  }
+                })()}</p>
+                <button 
+                  onClick={() => {
+                    // 尝试从localStorage重新加载数据
+                    try {
+                      const savedShapes = localStorage.getItem('tianditu-shapes');
+                      if (savedShapes) {
+                        const parsedShapes = JSON.parse(savedShapes);
+                        // 确保日期对象正确转换
+                        const formattedShapes = parsedShapes.map((shape: any) => ({
+                          ...shape,
+                          createdAt: new Date(shape.createdAt)
+                        }));
+                        setShapes(formattedShapes);
+                        alert(`已重新加载${formattedShapes.length}个形状`);
+                      } else {
+                        alert('localStorage中没有保存的形状数据');
+                      }
+                    } catch (err) {
+                      console.error('重新加载数据失败:', err);
+                      alert('重新加载数据失败: ' + (err instanceof Error ? err.message : String(err)));
+                    }
+                  }}
+                  style={{
+                    marginTop: '10px',
+                    padding: '5px 10px',
+                    backgroundColor: '#52c41a',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  重新加载数据
+                </button>
+                
+                <div style={{marginTop: '10px'}}>
+                  <button 
+                    onClick={() => {
+                      // 测试手动创建形状
+                      if (!mapRef?.current) {
+                        alert('地图实例未加载');
+                        return;
+                      }
+                      
+                      const map = mapRef.current.getMap();
+                      if (!map) {
+                        alert('无法获取地图对象');
+                        return;
+                      }
+                      
+                      try {
+                        // 获取地图中心
+                        const center = map.getCenter();
+                        const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
+                        const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+                        
+                        // 创建测试圆形
+                        const radius = 1000; // 1000米半径
+                        const circle = new window.T.Circle(
+                          new window.T.LngLat(centerLng, centerLat),
+                          radius,
+                          {
+                            color: "#ff4500",
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: "#ff4500",
+                            fillOpacity: 0.3
+                          }
+                        );
+                        
+                        // 添加到地图
+                        map.addOverLay(circle);
+                        
+                        // 手动触发圆形处理
+                        const mockEvent = {
+                          overlay: circle,
+                          target: circle
+                        };
+                        
+                        // 调用处理函数
+                        handleCircleToolDraw(mockEvent);
+                        
+                        alert('测试圆形已创建并处理');
+                      } catch (err) {
+                        console.error('测试创建圆形失败:', err);
+                        alert('测试创建圆形失败: ' + (err instanceof Error ? err.message : String(err)));
+                      }
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      backgroundColor: '#fa8c16',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      marginRight: '5px'
+                    }}
+                  >
+                    测试圆形
+                  </button>
+                  
+                  <button 
+                    onClick={() => {
+                      // 测试手动创建矩形
+                      if (!mapRef?.current) {
+                        alert('地图实例未加载');
+                        return;
+                      }
+                      
+                      const map = mapRef.current.getMap();
+                      if (!map) {
+                        alert('无法获取地图对象');
+                        return;
+                      }
+                      
+                      try {
+                        // 获取地图中心
+                        const center = map.getCenter();
+                        const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
+                        const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+                        
+                        // 创建矩形边界
+                        const offset = 0.005; // 经纬度偏移约500米
+                        const sw = new window.T.LngLat(centerLng - offset, centerLat - offset);
+                        const ne = new window.T.LngLat(centerLng + offset, centerLat + offset);
+                        const bounds = new window.T.LngLatBounds(sw, ne);
+                        
+                        // 创建测试矩形
+                        const rectangle = new window.T.Rectangle(
+                          bounds,
+                          {
+                            color: "#1890ff",
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: "#1890ff",
+                            fillOpacity: 0.3
+                          }
+                        );
+                        
+                        // 添加到地图
+                        map.addOverLay(rectangle);
+                        
+                        // 手动触发矩形处理
+                        const mockEvent = {
+                          overlay: rectangle,
+                          target: rectangle
+                        };
+                        
+                        // 调用处理函数
+                        handleRectangleDrawEnd(mockEvent);
+                        
+                        alert('测试矩形已创建并处理');
+                      } catch (err) {
+                        console.error('测试创建矩形失败:', err);
+                        alert('测试创建矩形失败: ' + (err instanceof Error ? err.message : String(err)));
+                      }
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      backgroundColor: '#1890ff',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      marginRight: '5px'
+                    }}
+                  >
+                    测试矩形
+                  </button>
+                  
+                  <button 
+                    onClick={() => {
+                      // 测试手动创建多边形
+                      if (!mapRef?.current) {
+                        alert('地图实例未加载');
+                        return;
+                      }
+                      
+                      const map = mapRef.current.getMap();
+                      if (!map) {
+                        alert('无法获取地图对象');
+                        return;
+                      }
+                      
+                      try {
+                        // 获取地图中心
+                        const center = map.getCenter();
+                        const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
+                        const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
+                        
+                        // 创建多边形点
+                        const offset = 0.005; // 经纬度偏移约500米
+                        const points = [
+                          new window.T.LngLat(centerLng, centerLat + offset),
+                          new window.T.LngLat(centerLng - offset, centerLat - offset),
+                          new window.T.LngLat(centerLng + offset, centerLat - offset)
+                        ];
+                        
+                        // 创建测试多边形
+                        const polygon = new window.T.Polygon(points, {
+                          color: "#722ed1",
+                          weight: 2,
+                          opacity: 0.8,
+                          fillColor: "#722ed1",
+                          fillOpacity: 0.3
+                        });
+                        
+                        // 添加到地图
+                        map.addOverLay(polygon);
+                        
+                        // 手动触发多边形处理
+                        const mockEvent = {
+                          overlay: polygon,
+                          target: polygon
+                        };
+                        
+                        // 调用处理函数
+                        handlePolygonDrawEnd(mockEvent);
+                        
+                        alert('测试多边形已创建并处理');
+                      } catch (err) {
+                        console.error('测试创建多边形失败:', err);
+                        alert('测试创建多边形失败: ' + (err instanceof Error ? err.message : String(err)));
+                      }
+                    }}
+                    style={{
+                      padding: '5px 10px',
+                      backgroundColor: '#722ed1',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    测试多边形
+                  </button>
+                </div>
+              </div>
             </div>
           ) : (
             <>

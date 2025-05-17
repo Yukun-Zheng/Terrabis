@@ -246,6 +246,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
         ? { ...layer, isVisible: visible } 
         : layer
     ));
+    
+    // 如果切换可见性，也可以添加额外逻辑，比如日志记录
+    console.log(`图层 ${layerId} 已${visible ? '显示' : '隐藏'}`);
   };
   
   // 处理侧边栏切换
