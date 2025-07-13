@@ -1274,7 +1274,12 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
   // 处理矩形绘制完成事件 - 按照天地图API示例重构
   const handleRectangleDrawEnd = (e: any) => {
     console.log('矩形绘制事件触发', e);
-    
+    // 输出事件对象所有可用属性，便于调试
+    try {
+      console.log('事件对象keys:', Object.keys(e));
+      if (e.overlay) console.log('e.overlay keys:', Object.keys(e.overlay));
+      if (e.target) console.log('e.target keys:', Object.keys(e.target));
+    } catch (err) {}
     // 防止重复处理
     if (window._drawingState && window._drawingState.processedEvents) {
       const eventSignature = `rectangle-${Date.now()}`;
@@ -1282,7 +1287,6 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       window._drawingState.processedEvents.add(eventSignature);
       setTimeout(() => window._drawingState.processedEvents.delete(eventSignature), 1000);
     }
-    
     try {
       // 从事件中获取矩形覆盖物
       const rectangle = e.overlay || e.target || e;
@@ -1290,32 +1294,27 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
         console.error('无法获取矩形覆盖物');
         return;
       }
-      
       // 获取矩形的边界 - 尝试多种方法
       let bounds = null;
-      
       // 方法1: 使用getBounds方法获取边界
       if (typeof rectangle.getBounds === 'function') {
         try {
           bounds = rectangle.getBounds();
-          console.log('方法1: 使用getBounds方法获取成功');
+          console.log('方法1: 使用getBounds方法获取成功', bounds);
         } catch (err) {
           console.error('使用getBounds方法获取失败:', err);
         }
       }
-      
       // 方法2: 直接访问bounds属性
       if (!bounds && rectangle.bounds) {
         bounds = rectangle.bounds;
-        console.log('方法2: 从bounds属性获取成功');
+        console.log('方法2: 从bounds属性获取成功', bounds);
       }
-      
       // 方法3: 从overlay中获取
       if (!bounds && e.overlay && e.overlay.bounds) {
         bounds = e.overlay.bounds;
-        console.log('方法3: 从e.overlay.bounds属性获取成功');
+        console.log('方法3: 从e.overlay.bounds属性获取成功', bounds);
       }
-      
       // 方法4: 尝试获取矩形的四个角点
       let sw, ne;
       if (!bounds) {
@@ -1323,25 +1322,44 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
           try {
             const points = rectangle.getPoints();
             if (points && points.length >= 2) {
-              // 假设points数组包含矩形的对角点
               sw = points[0];
               ne = points[1];
-              console.log('方法4: 从getPoints方法获取成功');
+              console.log('方法4: 从getPoints方法获取成功', points);
             }
           } catch (err) {
             console.error('使用getPoints方法获取失败:', err);
           }
         }
       }
-      
+      // 方法4.1: 直接从points/latlngs/path属性尝试获取
+      if (!bounds && !sw && !ne) {
+        const pts = rectangle.points || rectangle.latlngs || rectangle.path;
+        if (Array.isArray(pts) && pts.length >= 2) {
+          sw = pts[0];
+          ne = pts[1];
+          console.log('方法4.1: 从points/latlngs/path属性获取成功', pts);
+        }
+      }
+      // 方法4.2: 如果有四个点，取最小最大经纬度
+      if (!bounds && !sw && !ne) {
+        const pts = rectangle.points || rectangle.latlngs || rectangle.path;
+        if (Array.isArray(pts) && pts.length >= 4) {
+          const lngs = pts.map((p: any) => typeof p.lng === 'function' ? p.lng() : p.lng);
+          const lats = pts.map((p: any) => typeof p.lat === 'function' ? p.lat() : p.lat);
+          const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
+          const minLat = Math.min(...lats), maxLat = Math.max(...lats);
+          sw = new window.T.LngLat(minLng, minLat);
+          ne = new window.T.LngLat(maxLng, maxLat);
+          console.log('方法4.2: 从四点计算对角点', sw, ne);
+        }
+      }
       // 方法5: 从全局状态获取最后记录的边界
       if (!bounds && !sw && !ne && window._drawingState && window._drawingState.lastRectangleBounds) {
         const lastBounds = window._drawingState.lastRectangleBounds;
         sw = lastBounds.sw;
         ne = lastBounds.ne;
-        console.log('方法5: 从全局状态获取成功');
+        console.log('方法5: 从全局状态获取成功', lastBounds);
       }
-      
       // 从边界获取西南和东北角点
       if (bounds && !sw && !ne) {
         if (typeof bounds.getSouthWest === 'function' && typeof bounds.getNorthEast === 'function') {
@@ -1355,11 +1373,9 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
           ne = bounds._northEast;
         }
       }
-      
       // 如果无法获取角点，创建默认矩形
       if (!sw || !ne) {
         console.error('无法获取矩形角点，将尝试创建默认矩形');
-        
         // 获取地图中心
         if (mapRef?.current) {
           const map = mapRef.current.getMap();
@@ -1367,7 +1383,6 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
             const center = map.getCenter();
             const centerLng = typeof center.lng === 'function' ? center.lng() : center.lng;
             const centerLat = typeof center.lat === 'function' ? center.lat() : center.lat;
-            
             // 创建一个以地图中心为中心的矩形，大小约为500米
             const offset = 0.005; // 经纬度偏移约500米
             sw = new window.T.LngLat(centerLng - offset, centerLat - offset);
@@ -1375,7 +1390,6 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
             console.log('已创建默认矩形');
           }
         }
-        
         if (!sw || !ne) {
           console.error('无法创建默认矩形');
           return;
@@ -1468,6 +1482,14 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
         return;
       }
       
+      // 输出事件对象所有可用属性，便于调试
+      try {
+        console.log('事件对象keys:', Object.keys(e));
+        if (e.overlay) console.log('e.overlay keys:', Object.keys(e.overlay));
+        if (e.target) console.log('e.target keys:', Object.keys(e.target));
+        console.log('polygon对象keys:', Object.keys(polygon));
+      } catch (err) {}
+      
       // 尝试获取多边形的路径点 - 尝试多种方法
       let path = null;
       
@@ -1475,7 +1497,7 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       if (typeof polygon.getPath === 'function') {
         try {
           path = polygon.getPath();
-          console.log('方法1: 使用getPath方法获取成功');
+          console.log('方法1: 使用getPath方法获取成功', path);
         } catch (err) {
           console.error('使用getPath方法获取失败:', err);
         }
@@ -1485,7 +1507,7 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       if (!path && typeof polygon.getLngLats === 'function') {
         try {
           path = polygon.getLngLats();
-          console.log('方法2: 使用getLngLats方法获取成功');
+          console.log('方法2: 使用getLngLats方法获取成功', path);
         } catch (err) {
           console.error('使用getLngLats方法获取失败:', err);
         }
@@ -1495,13 +1517,32 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       if (!path) {
         if (polygon.path) {
           path = polygon.path;
-          console.log('方法3: 从path属性获取成功');
+          console.log('方法3: 从path属性获取成功', path);
         } else if (polygon.points) {
           path = polygon.points;
-          console.log('方法3: 从points属性获取成功');
+          console.log('方法3: 从points属性获取成功', path);
         } else if (polygon.latlngs) {
           path = polygon.latlngs;
-          console.log('方法3: 从latlngs属性获取成功');
+          console.log('方法3: 从latlngs属性获取成功', path);
+        } else if (polygon.getLatLngs && typeof polygon.getLatLngs === 'function') {
+          try {
+            path = polygon.getLatLngs();
+            console.log('方法3.1: 从getLatLngs方法获取成功', path);
+          } catch (err) {
+            console.error('getLatLngs方法获取失败:', err);
+          }
+        } else if (polygon._path) {
+          path = polygon._path;
+          console.log('方法3.2: 从_path属性获取成功', path);
+        } else if (polygon._latlngs) {
+          path = polygon._latlngs;
+          console.log('方法3.3: 从_latlngs属性获取成功', path);
+        } else if (polygon.geometry && Array.isArray(polygon.geometry)) {
+          path = polygon.geometry;
+          console.log('方法3.4: 从geometry属性获取成功', path);
+        } else if (polygon._points) {
+          path = polygon._points;
+          console.log('方法3.5: 从_points属性获取成功', path);
         }
       }
       
@@ -1509,13 +1550,39 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
       if (!path && e.overlay) {
         if (e.overlay.path) {
           path = e.overlay.path;
-          console.log('方法4: 从e.overlay.path获取成功');
+          console.log('方法4: 从e.overlay.path获取成功', path);
         } else if (e.overlay.points) {
           path = e.overlay.points;
-          console.log('方法4: 从e.overlay.points获取成功');
+          console.log('方法4: 从e.overlay.points获取成功', path);
         } else if (e.overlay.latlngs) {
           path = e.overlay.latlngs;
-          console.log('方法4: 从e.overlay.latlngs获取成功');
+          console.log('方法4: 从e.overlay.latlngs获取成功', path);
+        } else if (e.overlay._path) {
+          path = e.overlay._path;
+          console.log('方法4.1: 从e.overlay._path获取成功', path);
+        } else if (e.overlay._latlngs) {
+          path = e.overlay._latlngs;
+          console.log('方法4.2: 从e.overlay._latlngs属性获取成功', path);
+        } else if (e.overlay.geometry && Array.isArray(e.overlay.geometry)) {
+          path = e.overlay.geometry;
+          console.log('方法4.3: 从e.overlay.geometry获取成功', path);
+        } else if (e.overlay._points) {
+          path = e.overlay._points;
+          console.log('方法4.4: 从e.overlay._points获取成功', path);
+        }
+      }
+      
+      // 方法4.5: 检查事件对象中是否有形状属性
+      if (!path && e.shape) {
+        if (Array.isArray(e.shape)) {
+          path = e.shape;
+          console.log('方法4.5: 从e.shape获取成功', path);
+        } else if (e.shape.points) {
+          path = e.shape.points;
+          console.log('方法4.5: 从e.shape.points获取成功', path);
+        } else if (e.shape.latlngs) {
+          path = e.shape.latlngs;
+          console.log('方法4.5: 从e.shape.latlngs获取成功', path);
         }
       }
       
@@ -1525,7 +1592,7 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
           window._mapClickRecorder.clicks && 
           window._mapClickRecorder.clicks.length >= 3) {
         path = window._mapClickRecorder.clicks;
-        console.log('方法5: 使用记录的点击位置作为路径点');
+        console.log('方法5: 使用记录的点击位置作为路径点', path);
       }
       
       // 方法6: 从全局状态获取最后记录的多边形点
@@ -1534,11 +1601,58 @@ export const DrawingSidebar: React.FC<DrawingSidebarProps> = ({
           window._drawingState.lastPolygonPoints && 
           window._drawingState.lastPolygonPoints.length >= 3) {
         path = window._drawingState.lastPolygonPoints;
-        console.log('方法6: 从全局状态获取成功');
+        console.log('方法6: 从全局状态获取成功', path);
+      }
+      
+      // 方法6.5: 检查是否有全局多边形点数组
+      if ((!path || !Array.isArray(path) || path.length < 3) && 
+          window._polygonPoints && 
+          window._polygonPoints.length >= 3) {
+        path = window._polygonPoints;
+        console.log('方法6.5: 从全局_polygonPoints获取成功', path);
       }
       
       if (!path || !Array.isArray(path) || path.length < 3) {
         console.error('无法获取有效的多边形路径点');
+        console.log('polygon对象详细信息:', polygon);
+        console.log('事件对象e:', e);
+        
+        // 尝试检查polygon对象的所有属性，看是否有包含坐标的深层属性
+        try {
+          console.log('尝试探测多边形对象中所有可能包含坐标的属性:');
+          for (const key in polygon) {
+            if (key && polygon[key]) {
+              if (Array.isArray(polygon[key]) && polygon[key].length >= 3) {
+                console.log(`发现潜在路径数组 polygon.${key}:`, polygon[key]);
+                if (polygon[key][0] && (polygon[key][0].lng !== undefined || polygon[key][0].lat !== undefined)) {
+                  console.log(`polygon.${key} 看起来像是坐标数组`);
+                  path = polygon[key];
+                  console.log('方法7.1: 从动态探测属性获取成功', path);
+                  break;
+                }
+              } else if (typeof polygon[key] === 'object' && polygon[key] !== null) {
+                for (const subKey in polygon[key]) {
+                  if (Array.isArray(polygon[key][subKey]) && polygon[key][subKey].length >= 3) {
+                    console.log(`发现潜在路径数组 polygon.${key}.${subKey}:`, polygon[key][subKey]);
+                    if (polygon[key][subKey][0] && (polygon[key][subKey][0].lng !== undefined || polygon[key][subKey][0].lat !== undefined)) {
+                      console.log(`polygon.${key}.${subKey} 看起来像是坐标数组`);
+                      path = polygon[key][subKey];
+                      console.log('方法7.2: 从动态探测属性获取成功', path);
+                      break;
+                    }
+                  }
+                }
+                if (path) break;
+              }
+            }
+          }
+        } catch (err) {
+          console.error('探测多边形对象属性失败:', err);
+        }
+        
+        if (!path || !Array.isArray(path) || path.length < 3) {
+          alert('无法获取多边形路径点，请确保已正确绘制多边形。如多次出现请截图控制台信息反馈开发者。');
+        }
         
         // 方法7: 创建默认三角形
         if (mapRef?.current) {

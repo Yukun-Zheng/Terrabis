@@ -12,7 +12,7 @@ export interface LayerItem {
   color?: string; // 颜色
   fillColor?: string; // 填充颜色
   weight?: number; // 线宽
-  type?: 'heatmap' | 'geojson' | 'other'; // 图层类型
+  type?: 'heatmap' | 'geojson' | 'hexbin' | 'choropleth' | 'other'; // 图层类型
   onToggle: (visible: boolean) => void;
 }
 

@@ -1,408 +1,463 @@
 import React, { useState } from 'react';
+import { BarChart, PieChart, List, LineChart, Radar as RadarIcon, Circle, ScatterChart, AreaChart, Layers, Layout } from 'lucide-react';
+import VisualizationCard from './VisualizationCard';
+import { Bar, Pie, Line, Radar, PolarArea, Bubble, Scatter } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   ArcElement,
-  Title,
+  PointElement,
+  LineElement,
+  RadialLinearScale,
+  Filler,
   Tooltip,
   Legend,
+  Title
 } from 'chart.js';
-import { Bar, Pie, Line } from 'react-chartjs-2';
-import { HeatPoint } from '../../data/heatmapData';
 
-// 注册ChartJS组件
 ChartJS.register(
   CategoryScale,
   LinearScale,
-  PointElement,
-  LineElement,
   BarElement,
   ArcElement,
-  Title,
+  PointElement,
+  LineElement,
+  RadialLinearScale,
+  Filler,
   Tooltip,
-  Legend
+  Legend,
+  Title
 );
 
-// 可视化类型
-type VisualizationType = 'table' | 'bar' | 'pie' | 'line';
+// 扩展可视化类型
+export type VisualizationType =
+  | 'table'
+  | 'bar'
+  | 'pie'
+  | 'line'
+  | 'radar'
+  | 'polarArea'
+  | 'bubble'
+  | 'scatter'
+  | 'area'
+  | 'stackedBar'
+  | 'stackedArea';
 
 // 属性接口
 interface DataVisualizationProps {
-  data: HeatPoint[];
-  layerName: string;
+  data: any[];
   maxValue?: number;
+  layerName?: string;
 }
+
+const defaultVisible: Record<VisualizationType, boolean> = {
+  table: true,
+  bar: true,
+  pie: true,
+  line: true,
+  radar: false,
+  polarArea: false,
+  bubble: false,
+  scatter: false,
+  area: false,
+  stackedBar: false,
+  stackedArea: false
+};
 
 /**
  * 数据可视化组件
- * 
- * 提供多种可视化方式：表格、柱状图、饼图、折线图
+ * 仅用于数据详情查看，不再负责创建可拖动图表
  */
 const DataVisualization: React.FC<DataVisualizationProps> = ({
   data,
-  layerName,
-  maxValue = 100
+  maxValue = 100,
+  layerName = '图层数据'
 }) => {
-  // 当前选择的可视化类型
-  const [visType, setVisType] = useState<VisualizationType>('table');
+  const [visibleCards, setVisibleCards] = useState<{ [key in VisualizationType]: boolean }>(defaultVisible);
   
-  // 当前表格页码
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 10;
+  // 关闭某个可视化卡片
+  const closeCard = (type: VisualizationType) => {
+    setVisibleCards(prev => ({ ...prev, [type]: false }));
+  };
   
-  // 表格分页数据
-  const paginatedData = data.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const totalPages = Math.ceil(data.length / pageSize);
+  // 重新打开某个可视化卡片
+  const openCard = (type: VisualizationType) => {
+    setVisibleCards(prev => ({ ...prev, [type]: true }));
+  };
   
-  // 为图表准备数据
-  // 选取最高的10条数据用于可视化
-  const top10Data = [...data]
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 10);
-    
-  const chartLabels = top10Data.map(item => item.name);
-  const chartValues = top10Data.map(item => item.count);
+  // 过滤无效数据并限制显示数量
+  const validData = data && Array.isArray(data) 
+    ? data.filter(item => item && item.count !== undefined)
+    : [];
   
-  // 为条形图准备数据
+  // 限制最多显示10条记录
+  const limitedData = validData.slice(0, 10);
+  
+  // 计算数据的实际最大值，用于折线图缩放
+  const actualMaxValue = limitedData.length > 0 
+    ? Math.max(...limitedData.map(item => item.count))
+    : maxValue;
+  
+  if (limitedData.length === 0) {
+    return (
+      <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+        暂无数据可显示
+      </div>
+    );
+  }
+  
+  // 通用数据转换
+  const chartLabels = limitedData.map(item => item.name || `点位${item.id || ''}`);
+  const chartValues = limitedData.map(item => item.count);
+  const chartColors = limitedData.map((item, i) => item.color || `hsl(${i * 360 / limitedData.length}, 70%, 60%)`);
+  
+  // Chart.js数据结构
   const barData = {
     labels: chartLabels,
     datasets: [
       {
-        label: '热力值',
+        label: layerName,
         data: chartValues,
-        backgroundColor: 'rgba(54, 162, 235, 0.6)',
-        borderColor: 'rgba(54, 162, 235, 1)',
-        borderWidth: 1,
-      },
-    ],
+        backgroundColor: chartColors
+      }
+    ]
   };
-  
-  // 为饼图准备数据
   const pieData = {
     labels: chartLabels,
     datasets: [
       {
-        label: '热力值',
         data: chartValues,
-        backgroundColor: [
-          'rgba(255, 99, 132, 0.7)',
-          'rgba(54, 162, 235, 0.7)',
-          'rgba(255, 206, 86, 0.7)',
-          'rgba(75, 192, 192, 0.7)',
-          'rgba(153, 102, 255, 0.7)',
-          'rgba(255, 159, 64, 0.7)',
-          'rgba(199, 199, 199, 0.7)',
-          'rgba(83, 102, 255, 0.7)',
-          'rgba(40, 159, 64, 0.7)',
-          'rgba(210, 105, 30, 0.7)',
-        ],
-        borderColor: [
-          'rgba(255, 99, 132, 1)',
-          'rgba(54, 162, 235, 1)',
-          'rgba(255, 206, 86, 1)',
-          'rgba(75, 192, 192, 1)',
-          'rgba(153, 102, 255, 1)',
-          'rgba(255, 159, 64, 1)',
-          'rgba(199, 199, 199, 1)',
-          'rgba(83, 102, 255, 1)',
-          'rgba(40, 159, 64, 1)',
-          'rgba(210, 105, 30, 1)',
-        ],
-        borderWidth: 1,
-      },
-    ],
+        backgroundColor: chartColors
+      }
+    ]
   };
-  
-  // 为折线图准备数据
   const lineData = {
     labels: chartLabels,
     datasets: [
       {
-        label: '热力值',
+        label: layerName,
         data: chartValues,
         fill: false,
-        backgroundColor: 'rgba(75, 192, 192, 0.6)',
-        borderColor: 'rgba(75, 192, 192, 1)',
-        tension: 0.1,
+        borderColor: '#4caf50',
+        backgroundColor: '#4caf50',
+        tension: 0.4
+      }
+    ]
+  };
+  const radarData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: layerName,
+        data: chartValues,
+        backgroundColor: 'rgba(33,150,243,0.2)',
+        borderColor: '#2196f3',
+        pointBackgroundColor: '#2196f3',
+        pointBorderColor: '#fff',
+        pointHoverBackgroundColor: '#fff',
+        pointHoverBorderColor: '#2196f3'
+      }
+    ]
+  };
+  const polarAreaData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        data: chartValues,
+        backgroundColor: chartColors
+      }
+    ]
+  };
+  const bubbleData = {
+    datasets: limitedData.map((item, i) => ({
+      label: item.name || `点位${item.id || ''}`,
+      data: [{ x: i + 1, y: item.count, r: Math.max(5, Math.min(30, item.count / 2)) }],
+      backgroundColor: item.color || `hsl(${i * 360 / limitedData.length}, 70%, 60%)`
+    }))
+  };
+  const scatterData = {
+    datasets: limitedData.map((item, i) => ({
+      label: item.name || `点位${item.id || ''}`,
+      data: [{ x: i + 1, y: item.count }],
+      backgroundColor: item.color || `hsl(${i * 360 / limitedData.length}, 70%, 60%)`
+    }))
+  };
+  const areaData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: layerName,
+        data: chartValues,
+        fill: true,
+        backgroundColor: 'rgba(76,175,80,0.2)',
+        borderColor: '#4caf50',
+        tension: 0.4
+      }
+    ]
+  };
+  const stackedBarData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: layerName + ' A',
+        data: chartValues.map(v => v * 0.6),
+        backgroundColor: 'rgba(33,150,243,0.7)'
       },
-    ],
+      {
+        label: layerName + ' B',
+        data: chartValues.map(v => v * 0.4),
+        backgroundColor: 'rgba(255,152,0,0.7)'
+      }
+    ]
+  };
+  const stackedAreaData = {
+    labels: chartLabels,
+    datasets: [
+      {
+        label: layerName + ' A',
+        data: chartValues.map(v => v * 0.6),
+        fill: true,
+        backgroundColor: 'rgba(33,150,243,0.2)',
+        borderColor: '#2196f3',
+        tension: 0.4
+      },
+      {
+        label: layerName + ' B',
+        data: chartValues.map(v => v * 0.4),
+        fill: true,
+        backgroundColor: 'rgba(255,152,0,0.2)',
+        borderColor: '#ff9800',
+        tension: 0.4
+      }
+    ]
   };
   
-  // 图表配置
-  const chartOptions = {
+  // Chart.js通用options
+  const baseOptions = {
     responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        position: 'top' as const,
-      },
-      title: {
-        display: true,
-        text: `${layerName} - 热力数据(Top 10)`,
-      },
-    },
+    plugins: { legend: { position: 'bottom' as const } },
+    maintainAspectRatio: false
   };
   
-  // 基本样式
-  const containerStyle: React.CSSProperties = {
-    marginTop: '20px',
-    padding: '20px',
-    backgroundColor: '#f9f9f9',
-    borderRadius: '8px',
-    boxShadow: '0 2px 6px rgba(0,0,0,0.05)',
-  };
-  
-  const chartContainerStyle: React.CSSProperties = {
-    height: '300px',
-    marginTop: '15px',
-  };
-  
-  const tabStyle: React.CSSProperties = {
-    display: 'flex',
-    borderBottom: '1px solid #eee',
-    marginBottom: '15px',
-  };
-  
-  const tabItemStyle = (active: boolean): React.CSSProperties => ({
-    padding: '8px 16px',
-    cursor: 'pointer',
-    borderBottom: active ? '2px solid #1890ff' : 'none',
-    color: active ? '#1890ff' : '#666',
-    fontWeight: active ? 'bold' : 'normal',
-    transition: 'all 0.3s',
-  });
-  
-  const tableStyle: React.CSSProperties = {
-    width: '100%',
-    borderCollapse: 'collapse',
-    backgroundColor: 'white',
-    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    borderRadius: '4px',
-    overflow: 'hidden',
-  };
-  
-  const thStyle: React.CSSProperties = {
-    padding: '12px 15px',
-    textAlign: 'left',
-    backgroundColor: '#f5f7fa',
-    color: '#606266',
-    fontWeight: 'bold',
-    borderBottom: '1px solid #ebeef5',
-  };
-  
-  const tdStyle: React.CSSProperties = {
-    padding: '10px 15px',
-    borderBottom: '1px solid #ebeef5',
-  };
-  
-  const paginationStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: '15px',
-    gap: '10px',
-  };
-  
-  const pageButtonStyle = (active: boolean): React.CSSProperties => ({
-    padding: '5px 10px',
-    border: active ? '1px solid #1890ff' : '1px solid #d9d9d9',
-    backgroundColor: active ? '#1890ff' : 'white',
-    color: active ? 'white' : '#666',
-    cursor: 'pointer',
-    borderRadius: '4px',
-  });
-  
-  // 数据分析
-  const statsData = {
-    count: data.length,
-    max: Math.max(...data.map(item => item.count)),
-    min: Math.min(...data.map(item => item.count)),
-    avg: data.reduce((acc, item) => acc + item.count, 0) / data.length,
-  };
-  
-  const statCardStyle: React.CSSProperties = {
-    display: 'flex',
-    justifyContent: 'space-between',
-    backgroundColor: 'white',
-    padding: '15px',
-    borderRadius: '6px',
-    marginBottom: '15px',
-    boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
-  };
-  
-  const statItemStyle: React.CSSProperties = {
-    flex: 1,
-    textAlign: 'center',
-    borderRight: '1px solid #f0f0f0',
-    padding: '0 10px',
-  };
-  
-  // 渲染页面
   return (
-    <div style={containerStyle}>
-      <h3 style={{ margin: '0 0 15px 0', color: '#333' }}>
-        {layerName} 数据可视化 ({data.length} 条)
-      </h3>
-      
-      {/* 数据统计卡片 */}
-      <div style={statCardStyle}>
-        <div style={statItemStyle}>
-          <div style={{ fontSize: '12px', color: '#909399' }}>数据点数</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#1890ff' }}>{statsData.count}</div>
-        </div>
-        <div style={statItemStyle}>
-          <div style={{ fontSize: '12px', color: '#909399' }}>最大值</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#ff4d4f' }}>{statsData.max.toFixed(0)}</div>
-        </div>
-        <div style={statItemStyle}>
-          <div style={{ fontSize: '12px', color: '#909399' }}>最小值</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#52c41a' }}>{statsData.min.toFixed(0)}</div>
-        </div>
-        <div style={{ ...statItemStyle, borderRight: 'none' }}>
-          <div style={{ fontSize: '12px', color: '#909399' }}>平均值</div>
-          <div style={{ fontSize: '18px', fontWeight: 'bold', color: '#faad14' }}>{statsData.avg.toFixed(1)}</div>
-        </div>
-      </div>
-      
-      {/* 可视化类型选择器 */}
-      <div style={tabStyle}>
-        <div
-          style={tabItemStyle(visType === 'table')}
-          onClick={() => setVisType('table')}
-        >
-          表格
-        </div>
-        <div
-          style={tabItemStyle(visType === 'bar')}
-          onClick={() => setVisType('bar')}
-        >
-          柱状图
-        </div>
-        <div
-          style={tabItemStyle(visType === 'pie')}
-          onClick={() => setVisType('pie')}
-        >
-          饼图
-        </div>
-        <div
-          style={tabItemStyle(visType === 'line')}
-          onClick={() => setVisType('line')}
-        >
-          折线图
-        </div>
-      </div>
-      
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      gap: '15px' // 增加卡片之间的间距
+    }}>
       {/* 表格视图 */}
-      {visType === 'table' && (
-        <>
-          <table style={tableStyle}>
-            <thead>
-              <tr>
-                <th style={thStyle}>序号</th>
-                <th style={thStyle}>名称</th>
-                <th style={thStyle}>经度</th>
-                <th style={thStyle}>纬度</th>
-                <th style={thStyle}>热力值</th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedData.map((item, index) => (
-                <tr key={index} style={{ backgroundColor: index % 2 ? '#fafafa' : 'white' }}>
-                  <td style={tdStyle}>{(currentPage - 1) * pageSize + index + 1}</td>
-                  <td style={tdStyle}>{item.name || `位置${index+1}`}</td>
-                  <td style={tdStyle}>{item.lng.toFixed(4)}</td>
-                  <td style={tdStyle}>{item.lat.toFixed(4)}</td>
-                  <td style={tdStyle}>
-                    <div style={{ display: 'flex', alignItems: 'center' }}>
-                      <div style={{
-                        width: `${(item.count / maxValue) * 100}%`,
-                        maxWidth: '100px',
-                        height: '6px',
-                        background: `linear-gradient(90deg, #108ee9 0%, #87d068 100%)`,
-                        marginRight: '8px',
-                        borderRadius: '3px'
-                      }} />
-                      {item.count}
-                    </div>
-                  </td>
+      {visibleCards.table && (
+        <VisualizationCard 
+          title="表格视图" 
+          icon={<List size={18} color="#2196f3" />}
+          onClose={() => closeCard('table')}
+        >
+          <div style={{ maxHeight: '280px', overflowY: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr>
+                  <th style={{ backgroundColor: '#f5f5f5', padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>名称</th>
+                  <th style={{ backgroundColor: '#f5f5f5', padding: '10px', textAlign: 'left', borderBottom: '1px solid #ddd' }}>数值</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          
-          {/* 分页控件 */}
-          {totalPages > 1 && (
-            <div style={paginationStyle}>
-              <button
-                style={{ ...pageButtonStyle(false), opacity: currentPage === 1 ? 0.5 : 1 }}
-                disabled={currentPage === 1}
-                onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-              >
-                上一页
-              </button>
-              
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                // 计算要显示哪些页码按钮
-                let pageNum;
-                if (totalPages <= 5) {
-                  pageNum = i + 1;
-                } else if (currentPage <= 3) {
-                  pageNum = i + 1;
-                } else if (currentPage >= totalPages - 2) {
-                  pageNum = totalPages - 4 + i;
-                } else {
-                  pageNum = currentPage - 2 + i;
-                }
-                
-                return (
-                  <button
-                    key={i}
-                    style={pageButtonStyle(currentPage === pageNum)}
-                    onClick={() => setCurrentPage(pageNum)}
-                  >
-                    {pageNum}
-                  </button>
-                );
-              })}
-              
-              <button
-                style={{ ...pageButtonStyle(false), opacity: currentPage === totalPages ? 0.5 : 1 }}
-                disabled={currentPage === totalPages}
-                onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-              >
-                下一页
-              </button>
-            </div>
+              </thead>
+              <tbody>
+                {limitedData.map((item, index) => (
+                  <tr key={index}>
+                    <td style={{ padding: '10px', borderBottom: '1px solid #f0f0f0' }}>{item.name || `点位 ${index + 1}`}</td>
+                    <td style={{ padding: '10px', borderBottom: '1px solid #f0f0f0' }}>{item.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 柱状图 */}
+      {visibleCards.bar && (
+        <VisualizationCard 
+          title="柱状图" 
+          icon={<BarChart size={18} color="#ff9800" />}
+          onClose={() => closeCard('bar')}
+        >
+          <div style={{ height: '280px' }}>
+            <Bar data={barData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 饼图 */}
+      {visibleCards.pie && (
+        <VisualizationCard 
+          title="饼图" 
+          icon={<PieChart size={18} color="#e91e63" />}
+          onClose={() => closeCard('pie')}
+        >
+          <div style={{ height: '250px' }}>
+            <Pie data={pieData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 折线图 */}
+      {visibleCards.line && (
+        <VisualizationCard 
+          title="折线图" 
+          icon={<LineChart size={18} color="#4caf50" />}
+          onClose={() => closeCard('line')}
+        >
+          <div style={{ height: '250px' }}>
+            <Line data={lineData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 雷达图 */}
+      {visibleCards.radar && (
+        <VisualizationCard 
+          title="雷达图" 
+          icon={<RadarIcon size={18} color="#2196f3" />}
+          onClose={() => closeCard('radar')}
+        >
+          <div style={{ height: '250px' }}>
+            <Radar data={radarData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 极地区域图 */}
+      {visibleCards.polarArea && (
+        <VisualizationCard 
+          title="极地区域图" 
+          icon={<Circle size={18} color="#00bcd4" />}
+          onClose={() => closeCard('polarArea')}
+        >
+          <div style={{ height: '250px' }}>
+            <PolarArea data={polarAreaData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 气泡图 */}
+      {visibleCards.bubble && (
+        <VisualizationCard 
+          title="气泡图" 
+          icon={<ScatterChart size={18} color="#ff9800" />}
+          onClose={() => closeCard('bubble')}
+        >
+          <div style={{ height: '250px' }}>
+            <Bubble data={bubbleData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 散点图 */}
+      {visibleCards.scatter && (
+        <VisualizationCard 
+          title="散点图" 
+          icon={<ScatterChart size={18} color="#4caf50" />}
+          onClose={() => closeCard('scatter')}
+        >
+          <div style={{ height: '250px' }}>
+            <Scatter data={scatterData} options={baseOptions} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 面积图 */}
+      {visibleCards.area && (
+        <VisualizationCard 
+          title="面积图" 
+          icon={<AreaChart size={18} color="#2196f3" />}
+          onClose={() => closeCard('area')}
+        >
+          <div style={{ height: '250px' }}>
+            <Line data={areaData} options={{ ...baseOptions, elements: { line: { fill: true } } }} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 堆叠柱状图 */}
+      {visibleCards.stackedBar && (
+        <VisualizationCard 
+          title="堆叠柱状图" 
+          icon={<Layers size={18} color="#ff9800" />}
+          onClose={() => closeCard('stackedBar')}
+        >
+          <div style={{ height: '250px' }}>
+            <Bar data={stackedBarData} options={{ ...baseOptions, plugins: { ...baseOptions.plugins }, scales: { x: { stacked: true }, y: { stacked: true } } }} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 堆叠面积图 */}
+      {visibleCards.stackedArea && (
+        <VisualizationCard 
+          title="堆叠面积图" 
+          icon={<Layout size={18} color="#00bcd4" />}
+          onClose={() => closeCard('stackedArea')}
+        >
+          <div style={{ height: '250px' }}>
+            <Line data={stackedAreaData} options={{ ...baseOptions, elements: { line: { fill: true } }, plugins: { ...baseOptions.plugins }, scales: { x: { stacked: true }, y: { stacked: true } } }} />
+          </div>
+        </VisualizationCard>
+      )}
+      
+      {/* 已关闭的卡片重新打开按钮 */}
+      {Object.entries(visibleCards).some(([_, visible]) => !visible) && (
+        <div style={{ display: 'flex', gap: '10px', marginTop: '10px', flexWrap: 'wrap' }}>
+          {!visibleCards.table && (
+            <button style={reopenBtnStyle} onClick={() => openCard('table')}><List size={14} color="#2196f3" /><span>显示表格</span></button>
           )}
-        </>
-      )}
-      
-      {/* 柱状图视图 */}
-      {visType === 'bar' && (
-        <div style={chartContainerStyle}>
-          <Bar data={barData} options={chartOptions} />
-        </div>
-      )}
-      
-      {/* 饼图视图 */}
-      {visType === 'pie' && (
-        <div style={chartContainerStyle}>
-          <Pie data={pieData} options={chartOptions} />
-        </div>
-      )}
-      
-      {/* 折线图视图 */}
-      {visType === 'line' && (
-        <div style={chartContainerStyle}>
-          <Line data={lineData} options={chartOptions} />
+          {!visibleCards.bar && (
+            <button style={reopenBtnStyle} onClick={() => openCard('bar')}><BarChart size={14} color="#ff9800" /><span>显示柱状图</span></button>
+          )}
+          {!visibleCards.pie && (
+            <button style={reopenBtnStyle} onClick={() => openCard('pie')}><PieChart size={14} color="#e91e63" /><span>显示饼图</span></button>
+          )}
+          {!visibleCards.line && (
+            <button style={reopenBtnStyle} onClick={() => openCard('line')}><LineChart size={14} color="#4caf50" /><span>显示折线图</span></button>
+          )}
+          {!visibleCards.radar && (
+            <button style={reopenBtnStyle} onClick={() => openCard('radar')}><RadarIcon size={14} color="#2196f3" /><span>显示雷达图</span></button>
+          )}
+          {!visibleCards.polarArea && (
+            <button style={reopenBtnStyle} onClick={() => openCard('polarArea')}><Circle size={14} color="#00bcd4" /><span>显示极地区域图</span></button>
+          )}
+          {!visibleCards.bubble && (
+            <button style={reopenBtnStyle} onClick={() => openCard('bubble')}><ScatterChart size={14} color="#ff9800" /><span>显示气泡图</span></button>
+          )}
+          {!visibleCards.scatter && (
+            <button style={reopenBtnStyle} onClick={() => openCard('scatter')}><ScatterChart size={14} color="#4caf50" /><span>显示散点图</span></button>
+          )}
+          {!visibleCards.area && (
+            <button style={reopenBtnStyle} onClick={() => openCard('area')}><AreaChart size={14} color="#2196f3" /><span>显示面积图</span></button>
+          )}
+          {!visibleCards.stackedBar && (
+            <button style={reopenBtnStyle} onClick={() => openCard('stackedBar')}><Layers size={14} color="#ff9800" /><span>显示堆叠柱状图</span></button>
+          )}
+          {!visibleCards.stackedArea && (
+            <button style={reopenBtnStyle} onClick={() => openCard('stackedArea')}><Layout size={14} color="#00bcd4" /><span>显示堆叠面积图</span></button>
+          )}
         </div>
       )}
     </div>
   );
+};
+
+const reopenBtnStyle: React.CSSProperties = {
+  padding: '5px 10px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: '5px',
+  backgroundColor: '#f5f5f5',
+  border: 'none',
+  borderRadius: '4px',
+  cursor: 'pointer',
+  fontSize: '12px',
+  marginBottom: '5px'
 };
 
 export default DataVisualization; 

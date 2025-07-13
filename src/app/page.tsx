@@ -2,6 +2,7 @@
 
 import MapContainer from "@/components/MapContainer"; // 使用别名导入
 import React, { useEffect } from "react";
+import "@/styles/globals.css"; // 确保引入全局CSS
 // 移除 Mapbox GL CSS 引入
 // import 'mapbox-gl/dist/mapbox-gl.css';
 
@@ -25,7 +26,12 @@ export default function Home() {
   }, []);
 
   return (
-    <main style={{ width: '100vw', height: '100vh', overflow: 'hidden' }}>
+    <main style={{ 
+      width: '100vw', 
+      height: '100vh', 
+      overflow: 'hidden',
+      position: 'relative' // 确保相对定位，不会影响固定定位的子元素
+    }}>
       {/* 渲染MapContainer组件 */}
       <MapContainer />
     </main>

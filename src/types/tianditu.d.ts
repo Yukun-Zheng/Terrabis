@@ -1,4 +1,7 @@
-// 天地图 API 的类型声明
+/**
+ * 天地图API类型定义文件
+ */
+
 declare namespace T {
   // 地图类型常量
   const VECTOR_MAP_TYPE: string;
@@ -340,10 +343,12 @@ declare namespace T {
   }
 }
 
-// 扩展Window接口，使其包含天地图API
-interface Window {
-  T: typeof T;
-  TIANDITU_API_LOADING?: boolean;
-  TIANDITU_API_LOADED?: boolean;
-  onTiandituLoaded?: () => void;
+// 扩展全局Window接口
+declare global {
+  interface Window {
+    T: typeof T;
+    TIANDITU_API_LOADED: boolean;
+    TIANDITU_API_LOADING: boolean;
+    onTiandituLoaded: () => void;
+  }
 } 

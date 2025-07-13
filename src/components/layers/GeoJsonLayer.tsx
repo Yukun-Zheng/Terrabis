@@ -57,19 +57,20 @@ const GeoJsonLayer: React.FC<GeoJsonLayerProps> = ({
 
     try {
       console.log('初始化GeoJSON图层...');
-      
       // 创建图层实例
       initGeoJsonLayer();
-      
       // 清理函数
       return () => {
-        if (layerRef.current) {
-          try {
-            map.removeOverLay(layerRef.current);
-            console.log('GeoJSON图层已移除');
-          } catch (err) {
-            console.error('移除GeoJSON图层失败:', err);
-          }
+        if (layerRef.current && Array.isArray(layerRef.current)) {
+          layerRef.current.forEach((polygon: any) => {
+            try {
+              map.removeOverLay(polygon);
+            } catch (err) {
+              console.error('移除GeoJSON多边形失败:', err);
+            }
+          });
+          layerRef.current = [];
+          console.log('GeoJSON图层已移除');
         }
       };
     } catch (err) {
@@ -86,44 +87,34 @@ const GeoJsonLayer: React.FC<GeoJsonLayerProps> = ({
 
   // 初始化GeoJSON图层函数
   const initGeoJsonLayer = () => {
-    if (layerRef.current) {
-      // 如果已存在实例，先移除
-      try {
-        map.removeOverLay(layerRef.current);
-      } catch (err) {
-        console.error('移除现有GeoJSON图层失败:', err);
-      }
+    // 清理旧的
+    if (layerRef.current && Array.isArray(layerRef.current)) {
+      layerRef.current.forEach((polygon: any) => {
+        try {
+          map.removeOverLay(polygon);
+        } catch (err) {
+          console.error('移除现有GeoJSON多边形失败:', err);
+        }
+      });
     }
+    layerRef.current = [];
 
     try {
-      // 创建图层组
-      const layerGroup = new (window.T as any).OverlayGroup();
-      layerRef.current = layerGroup;
-      
       console.log(`开始处理GeoJSON数据，特征数量: ${data.features.length}`);
-
       // 遍历features
       data.features.forEach((feature: any, index: number) => {
         if (!feature.geometry) {
           console.error('特征没有geometry属性:', feature);
           return;
         }
-        
         if (feature.geometry.type === 'MultiPolygon') {
-          // 处理多面
           feature.geometry.coordinates.forEach((polygonCoords: any) => {
             polygonCoords.forEach((ringCoords: any) => {
               if (!ringCoords || !Array.isArray(ringCoords) || ringCoords.length < 3) {
                 console.error('无效的多边形坐标:', ringCoords);
                 return;
               }
-              
-              // 创建多边形点数组
-              const points = ringCoords.map((coord: [number, number]) => {
-                return new window.T.LngLat(coord[0], coord[1]);
-              });
-              
-              // 创建多边形
+              const points = ringCoords.map((coord: [number, number]) => new window.T.LngLat(coord[0], coord[1]));
               const polygon = new window.T.Polygon(points, {
                 color: color,
                 weight: 2,
@@ -131,36 +122,24 @@ const GeoJsonLayer: React.FC<GeoJsonLayerProps> = ({
                 fillColor: fillColor,
                 fillOpacity: opacity * 0.5
               });
-
-              // 保存原始feature信息，用于事件处理
               (polygon as any).feature = feature;
               (polygon as any).id = `${layerId}-${index}`;
-              
-              // 添加点击事件
               if (onClick) {
                 polygon.addEventListener('click', (e: any) => {
                   onClick(feature, e.lnglat);
                 });
               }
-              
-              // 添加到图层组
-              layerGroup.addOverLay(polygon);
+              map.addOverLay(polygon);
+              layerRef.current.push(polygon);
             });
           });
         } else if (feature.geometry.type === 'Polygon') {
-          // 处理单面
           feature.geometry.coordinates.forEach((ringCoords: any) => {
             if (!ringCoords || !Array.isArray(ringCoords) || ringCoords.length < 3) {
               console.error('无效的多边形坐标:', ringCoords);
               return;
             }
-            
-            // 创建多边形点数组
-            const points = ringCoords.map((coord: [number, number]) => {
-              return new window.T.LngLat(coord[0], coord[1]);
-            });
-            
-            // 创建多边形
+            const points = ringCoords.map((coord: [number, number]) => new window.T.LngLat(coord[0], coord[1]));
             const polygon = new window.T.Polygon(points, {
               color: color,
               weight: 2,
@@ -168,42 +147,28 @@ const GeoJsonLayer: React.FC<GeoJsonLayerProps> = ({
               fillColor: fillColor,
               fillOpacity: opacity * 0.5
             });
-            
-            // 保存原始feature信息，用于事件处理
             (polygon as any).feature = feature;
             (polygon as any).id = `${layerId}-${index}`;
-            
-            // 添加点击事件
             if (onClick) {
               polygon.addEventListener('click', (e: any) => {
                 onClick(feature, e.lnglat);
               });
             }
-            
-            // 添加到图层组
-            layerGroup.addOverLay(polygon);
+            map.addOverLay(polygon);
+            layerRef.current.push(polygon);
           });
         } else {
           console.warn('不支持的几何类型:', feature.geometry.type);
         }
       });
-
-      // 添加图层组到地图
-      map.addOverLay(layerGroup);
-      
       // 设置可见性
-      if (!visible) {
-        layerGroup.hide();
-      } else {
-        layerGroup.show();
+      if (!visible && layerRef.current) {
+        layerRef.current.forEach((polygon: any) => polygon.hide && polygon.hide());
+      } else if (visible && layerRef.current) {
+        layerRef.current.forEach((polygon: any) => polygon.show && polygon.show());
       }
-      
-      loadedRef.current = true;
-      if (onLoad) onLoad();
-      
-      console.log('GeoJSON图层初始化成功');
     } catch (err) {
-      console.error('创建GeoJSON图层失败:', err);
+      console.error('初始化GeoJSON图层时出错:', err);
     }
   };
 
@@ -215,15 +180,6 @@ const GeoJsonLayer: React.FC<GeoJsonLayerProps> = ({
     }
     
     try {
-      // 更新可见性
-      if (visible) {
-        layerRef.current.show();
-        console.log('显示GeoJSON图层');
-      } else {
-        layerRef.current.hide();
-        console.log('隐藏GeoJSON图层');
-      }
-      
       // 透明度、颜色等样式更新需要重新创建图层
       // 但天地图API不支持直接更新OverlayGroup的样式
       // 这里可以选择完全重新创建图层来应用新样式

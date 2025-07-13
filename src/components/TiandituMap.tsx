@@ -119,7 +119,7 @@ const TiandituMap = forwardRef<any, TiandituMapProps>(({
         // 返回获取瓦片URL的函数
         return (x: number, y: number, z: number) => {
           // 使用正确的代理URL格式 - 关键修复
-          return `/api/tianditu/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
+          return `/tianditu/${baseType}_w/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0&LAYER=${baseType}&STYLE=default&TILEMATRIXSET=w&FORMAT=tiles&TILEMATRIX=${z}&TILEROW=${y}&TILECOL=${x}&tk=${TIANDITU_API_KEY}`;
         };
       };
       
