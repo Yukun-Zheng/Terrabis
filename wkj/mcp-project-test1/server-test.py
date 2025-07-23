@@ -7,11 +7,10 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 from PIL.Image import Image
 
-import numpy as np
-from models.sam2.sam2.sam2.sam2_image_predictor import SAM2ImagePredictor
+
+from models.sam2.sam2.sam2.sam2_image_predictor import predictor
 
 import cv2;
-
 import httpx
 from mcp.server.fastmcp import FastMCP
 from dotenv import load_dotenv
