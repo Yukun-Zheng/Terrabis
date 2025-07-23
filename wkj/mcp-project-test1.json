@@ -1,0 +1,36 @@
+{
+    "mcpservers":
+    {
+        "fs": {
+	"isActive": true,
+	"command": "cmd",
+	"args": [
+		"/c",
+		"npx",
+		"-y",
+		"@smithery/cli@latest",
+		"run",
+		"@bunasQ/fs",
+		"--key",
+		"8ce02901-a503-4520-8ebc-a2a362e93993"
+	  ],
+	  "name": "fs"
+       },
+       
+    "mysqldb-mcp-server": {
+      "isActive": true,
+      "command": "uvx",
+      "args": [
+        "mysqldb-mcp-server"
+      ],
+      "env": {
+        "MYSQL_HOST": "localhost",
+        "MYSQL_USER": "root",
+        "MYSQL_PASSWORD": "123456",
+        "MYSQL_DATABASE": "company",
+        "MYSQL_READONLY": "false"
+      },
+      "name": "mysqldb-mcp-server"
+    }
+    }
+}
